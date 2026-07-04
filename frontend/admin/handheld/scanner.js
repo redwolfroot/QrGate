@@ -14,6 +14,10 @@
   var SHOW_TIMELINE = !!CFG.showTimeline;
   var VALID_TEXT = CFG.validText || "Valid";
   var INVALID_TEXT = CFG.invalidText || "Invalid";
+  // Loud, distinct wording for a re-scan of an ALREADY-used ticket. This is the
+  // fraud/double-entry case — it must never look like an ordinary "Invalid".
+  var REUSE_TEXT = CFG.reuseText || "Already used!";
+  var REUSE_HINT = CFG.reuseHint || "First scanned:";
 
   var SAME_COOLDOWN = 4000;
   var REQUEST_TIMEOUT = 6500; // abort a hung validate fast — 200 people are waiting
@@ -41,7 +45,8 @@
     check: '<path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/>',
     cross: '<path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><line x1="15" x2="9" y1="9" y2="15"/><line x1="9" x2="15" y1="9" y2="15"/>',
     userCheck: '<path d="M2 21a8 8 0 0 1 13.292-6"/><circle cx="10" cy="8" r="5"/><path d="m16 19 2 2 4-4"/>',
-    userX: '<path d="M2 21a8 8 0 0 1 11.873-7"/><circle cx="10" cy="8" r="5"/><path d="m17 17 5 5"/><path d="m22 17-5 5"/>'
+    userX: '<path d="M2 21a8 8 0 0 1 11.873-7"/><circle cx="10" cy="8" r="5"/><path d="m17 17 5 5"/><path d="m22 17-5 5"/>',
+    alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>'
   };
   function svg(paths, cls) {
     return '<svg class="' + (cls || "") + '" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" ' +
@@ -120,6 +125,21 @@
       '<div class="hh-row__value">' + valueHtml + "</div></div></div>";
   }
 
+  // A denial is a RE-USE (double entry) when the server rejected it precisely
+  // because the ticket was already consumed. Keyed off the server message so it
+  // is unambiguous vs. "not paid" / "wrong date" / "not found".
+  function isReuse(d) {
+    return !!(d && d.status === "error" && d.message === "Ticket already used");
+  }
+  // When the ticket was first (legitimately) let in, so staff can see exactly
+  // when the original entry happened: prefer the first successful attempt, else
+  // fall back to used_at.
+  function firstScanTime(t) {
+    var a = (t.access_attempts || []).filter(function (x) { return x.status === "success"; });
+    if (a.length && a[0].time) return a[0].time;
+    return t.used_at || "";
+  }
+
   function renderBody(d) {
     var t = d.data || {};
     var attempts = t.access_attempts || [];
@@ -127,7 +147,16 @@
     var failCount = attempts.filter(function (a) { return a.status === "error"; }).length;
     var isToday = todayISO() === t.valid_date;
 
-    var html = '<div class="hh-rows">';
+    var html = "";
+    // Loud alarm banner at the very top for a re-scanned (already used) ticket.
+    if (isReuse(d)) {
+      html += '<div class="hh-alarm">' + svg(ICON.alert, "hh-alarm__ico") +
+        '<div class="hh-alarm__main"><div class="hh-alarm__t">' + REUSE_TEXT + "</div>" +
+        '<div class="hh-alarm__s">' + REUSE_HINT + " " +
+        (esc(firstScanTime(t)) || "&mdash;") + "</div></div></div>";
+    }
+
+    html += '<div class="hh-rows">';
     html += row(ICON.ticket, "Ticket ID", '<span class="mono">' + esc(t.tid) + "</span>");
     html += row(ICON.user, "Name", esc((t.first_name || "") + " " + (t.last_name || "")).trim() || "&mdash;");
     html += row(ICON.tag, "Type", esc(t.type || "&mdash;"));
@@ -164,18 +193,23 @@
 
   function showResult(valid, d) {
     var sheet = $("hhResult");
-    sheet.classList.remove("valid", "invalid");
+    var reuse = !valid && isReuse(d);
+    sheet.classList.remove("valid", "invalid", "reuse");
     sheet.classList.add(valid ? "valid" : "invalid");
+    if (reuse) sheet.classList.add("reuse");
 
-    $("hhResultIcon").innerHTML = svg(valid ? ICON.check : ICON.cross);
-    $("hhResultStatus").textContent = valid ? VALID_TEXT : INVALID_TEXT;
+    $("hhResultIcon").innerHTML = svg(valid ? ICON.check : (reuse ? ICON.alert : ICON.cross));
+    $("hhResultStatus").textContent = valid ? VALID_TEXT : (reuse ? REUSE_TEXT : INVALID_TEXT);
     $("hhResultMsg").textContent = (d && d.message) || "";
 
     $("hhResultBody").innerHTML = (d && d.data) ? renderBody(d) : "";
     sheet.classList.add("show");
 
     play(valid ? "success.mp3" : "error.mp3");
-    vibrate(valid ? 80 : [60, 50, 60]);
+    // A re-used ticket gets a longer, unmistakable buzz pattern + a second error
+    // tone so a busy door can't wave it through by reflex.
+    vibrate(valid ? 80 : (reuse ? [140, 60, 140, 60, 260] : [60, 50, 60]));
+    if (reuse) setTimeout(function () { play("error.mp3"); }, 280);
 
     // Auto-advance applies ONLY to VALID results: keep the green flash + sound,
     // then dismiss so staff don't tap per guest. FAIL always stays up for a

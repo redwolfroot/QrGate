@@ -172,6 +172,7 @@ def _migrate_ticket_columns() -> None:
         "seat_id": "TEXT",                   # reserved-seating: bound seat id
         "seat_label": "TEXT",                # human seat label e.g. "Row B · 12"
         "location": "TEXT",                  # location id snapshot (seated dates)
+        "lang": "TEXT",                      # buyer UI language at purchase (email/PDF)
     }
     conn = get_db()
     try:
@@ -657,6 +658,12 @@ def _row_to_ticket(row: sqlite3.Row) -> Dict[str, Any]:
         "payment_intent": row["payment_intent"] if "payment_intent" in keys else None,
         "refund_id": row["refund_id"] if "refund_id" in keys else None,
         "method": row["method"] if "method" in keys else None,
+        # Reserved-seating columns (added by _migrate_ticket_columns); guard with
+        # key checks so a row read before the migration can't KeyError.
+        "seat_id": row["seat_id"] if "seat_id" in keys else None,
+        "seat_label": row["seat_label"] if "seat_label" in keys else None,
+        "location": row["location"] if "location" in keys else None,
+        "lang": row["lang"] if "lang" in keys else None,
     }
 
 
@@ -703,8 +710,9 @@ def save_tickets(tid: str, new_ticket: dict) -> None:
             INSERT INTO tickets (
                 tid, first_name, last_name, email, paid, valid_date,
                 type, valid, used_at, access_attempts,
-                status, payment_intent, refund_id, method
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                status, payment_intent, refund_id, method,
+                seat_id, seat_label, location, lang
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(tid) DO UPDATE SET
                 first_name=excluded.first_name,
                 last_name=excluded.last_name,
@@ -718,7 +726,11 @@ def save_tickets(tid: str, new_ticket: dict) -> None:
                 status=excluded.status,
                 payment_intent=excluded.payment_intent,
                 refund_id=excluded.refund_id,
-                method=excluded.method
+                method=excluded.method,
+                seat_id=excluded.seat_id,
+                seat_label=excluded.seat_label,
+                location=excluded.location,
+                lang=excluded.lang
             """,
             (
                 tid,
@@ -735,6 +747,10 @@ def save_tickets(tid: str, new_ticket: dict) -> None:
                 new_ticket.get("payment_intent"),
                 new_ticket.get("refund_id"),
                 new_ticket.get("method"),
+                new_ticket.get("seat_id"),
+                new_ticket.get("seat_label"),
+                new_ticket.get("location"),
+                new_ticket.get("lang"),
             ),
         )
         conn.commit()
@@ -862,6 +878,72 @@ def _save_stats_dict(stats: Dict[str, Any]) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def checkin_stats() -> Dict[str, Dict[str, int]]:
+    """Per-date door check-in counts derived from the tickets table.
+    A ticket counts as SOLD once it exists and isn't cancelled, and as
+    CHECKED_IN once it has a used_at timestamp. Admin (unlimited) and dateless
+    'Unlimited' tickets are excluded — they aren't per-date attendees.
+    Returns {date: {"sold", "checked_in", "pending"}}."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """
+            SELECT valid_date AS d,
+                   COUNT(*) AS sold,
+                   SUM(CASE WHEN used_at IS NOT NULL AND used_at <> ''
+                            THEN 1 ELSE 0 END) AS checked_in
+              FROM tickets
+             WHERE (status IS NULL OR status <> 'cancelled')
+               AND (type IS NULL OR type <> 'admin')
+               AND valid_date IS NOT NULL AND valid_date <> 'Unlimited'
+             GROUP BY valid_date
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+    out: Dict[str, Dict[str, int]] = {}
+    for r in rows:
+        sold = r["sold"] or 0
+        ci = r["checked_in"] or 0
+        out[r["d"]] = {"sold": sold, "checked_in": ci, "pending": max(0, sold - ci)}
+    return out
+
+
+def recent_checkins(limit: int = 20) -> list:
+    """Most-recently checked-in tickets (used_at set), newest first. used_at is a
+    zero-padded 'YYYY.MM.DD - HH:MM:SS' string, so a lexical DESC sort is also
+    chronological. Cancelled tickets are excluded."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """
+            SELECT tid, first_name, last_name, valid_date, used_at, seat_label
+              FROM tickets
+             WHERE used_at IS NOT NULL AND used_at <> ''
+               AND (status IS NULL OR status <> 'cancelled')
+             ORDER BY used_at DESC
+             LIMIT ?
+            """,
+            (int(limit),),
+        ).fetchall()
+    finally:
+        conn.close()
+    result = []
+    for r in rows:
+        keys = r.keys()
+        name = ((r["first_name"] or "") + " " + (r["last_name"] or "")).strip()
+        result.append(
+            {
+                "tid": r["tid"],
+                "name": name,
+                "valid_date": r["valid_date"],
+                "used_at": r["used_at"],
+                "seat_label": r["seat_label"] if "seat_label" in keys else None,
+            }
+        )
+    return result
 
 
 def log_sale(date: str, count: int, income: float) -> None:

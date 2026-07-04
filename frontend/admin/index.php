@@ -495,6 +495,50 @@ HTML;
                 </div>
             </div>
 
+            <div class="card" id="checkinCard">
+                <header>
+                    <h2 class="flex justify-between items-center">
+                        <span class="flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round" class="lucide lucide-scan-line-icon">
+                                <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+                                <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+                                <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+                                <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+                                <path d="M7 12h10" />
+                            </svg>
+                            Live Einlass
+                        </span>
+                        <span id="checkinLiveDot" class="badge-outline flex items-center gap-1" title="Aktualisiert automatisch">
+                            <span style="width:8px;height:8px;border-radius:999px;background:var(--avo-success);display:inline-block;"></span>
+                            Live
+                        </span>
+                    </h2>
+                    <p>Wie viele der verkauften Tickets bereits am Einlass gescannt wurden. Aktualisiert automatisch.</p>
+                </header>
+                <section>
+                    <div id="checkinDateLabel" style="font-size:.85rem;color:var(--avo-text-muted);margin-bottom:.4rem;">Lade…</div>
+                    <div style="display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap;">
+                        <span id="checkinBig" style="font-family:var(--avo-font-display);font-size:2.4rem;font-weight:800;line-height:1;">–</span>
+                        <span id="checkinOf" style="color:var(--avo-text-muted);font-weight:600;">/ – eingecheckt</span>
+                        <span id="checkinPct" class="badge-outline" style="margin-left:auto;">–%</span>
+                    </div>
+                    <div style="height:10px;border-radius:999px;background:color-mix(in oklab,var(--avo-border) 70%,transparent);margin:.75rem 0 .25rem;overflow:hidden;">
+                        <div id="checkinBar" style="height:100%;width:0%;background:var(--avo-primary);border-radius:999px;transition:width .4s ease;"></div>
+                    </div>
+                    <div style="display:flex;gap:1.5rem;font-size:.85rem;color:var(--avo-text-muted);margin-top:.5rem;">
+                        <span><strong id="checkinPending" style="color:var(--avo-text);">–</strong> ausstehend</span>
+                        <span><strong id="checkinSold" style="color:var(--avo-text);">–</strong> verkauft</span>
+                    </div>
+
+                    <h4 style="margin:1.25rem 0 .5rem;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--avo-text-muted);">Letzte Scans</h4>
+                    <div id="checkinRecent" style="display:flex;flex-direction:column;gap:.35rem;">
+                        <div style="color:var(--avo-text-muted);font-size:.85rem;">–</div>
+                    </div>
+                </section>
+            </div>
+
             <div class="card">
                 <header>
                     <h2><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
@@ -705,6 +749,12 @@ HTML;
                             <input type="email" id="contactEmail" placeholder="kontakt@veranstalter.de"
                                 value="<?php echo $shows ? htmlspecialchars($shows['contact_email'] ?? '') : ''; ?>">
                             <p class="text-muted-foreground text-sm">Öffentliche Kontaktadresse für Kunden (Storno &amp; Rückfragen). Wird im Ticketshop angezeigt.</p>
+                        </div>
+                        <div class="grid gap-2">
+                            <label class="label" for="appDomain">App-Domain</label>
+                            <input type="text" id="appDomain" placeholder="https://tickets.veranstalter.de"
+                                value="<?php echo $shows ? htmlspecialchars($shows['app_domain'] ?? '') : ''; ?>">
+                            <p class="text-muted-foreground text-sm">Öffentliche Adresse deines Ticketshops (Frontend). Wird für Links in E-Mails genutzt, z.&nbsp;B. den Stornierungs-Link. Ohne <code>https://</code> wird es automatisch ergänzt.</p>
                         </div>
                         <div class="flex items-start gap-3">
                             <input type="checkbox" id="storeLock" <?php echo $shows && $shows['store_lock'] ? 'checked' : ''; ?>>
@@ -1460,7 +1510,75 @@ HTML;
         const saved = localStorage.getItem('currentAdminSection');
         if (saved && document.getElementById(saved)) switchSection(saved);
 
-        
+        // ---- live check-in widget (dashboard) ----------------------------
+        // Polls the backend for per-date door check-in counts + the latest scans
+        // and paints them into the "Live Einlass" card. Runs only while the
+        // dashboard section is on screen; failures keep the last good values.
+        (function () {
+            const card = document.getElementById('checkinCard');
+            if (!card) return;
+            const $ = id => document.getElementById(id);
+            function fmtTime(s) {
+                if (!s) return '';
+                const m = String(s).match(/(\d{2}):(\d{2})(?::\d{2})?\s*$/);
+                return m ? m[1] + ':' + m[2] : s;
+            }
+            function esc(s) {
+                const d = document.createElement('div');
+                d.textContent = (s == null ? '' : s);
+                return d.innerHTML;
+            }
+            async function poll() {
+                const dash = document.getElementById('dashboard');
+                if (!dash || dash.style.display === 'none') return;
+                try {
+                    const r = await fetch('admin-api-proxy.php?endpoint=checkins', { cache: 'no-store' });
+                    const j = await r.json();
+                    if (!j || j.status !== 'success' || !j.data) return;
+                    const d = j.data;
+                    const byDate = d.by_date || {};
+                    // Prefer today's event; otherwise the date with the most sold tickets.
+                    let key = (d.today && byDate[d.today]) ? d.today : null;
+                    if (!key) {
+                        let best = -1;
+                        for (const k in byDate) {
+                            if ((byDate[k].sold || 0) > best) { best = byDate[k].sold || 0; key = k; }
+                        }
+                    }
+                    const row = key ? byDate[key] : { sold: 0, checked_in: 0, pending: 0 };
+                    const sold = row.sold || 0, ci = row.checked_in || 0, pending = row.pending || 0;
+                    const pct = sold > 0 ? Math.round((ci / sold) * 100) : 0;
+                    $('checkinDateLabel').textContent = key
+                        ? (key === d.today ? 'Heute · ' + key : key)
+                        : 'Kein Event mit Terminverkauf';
+                    $('checkinBig').textContent = ci;
+                    $('checkinOf').textContent = '/ ' + sold + ' eingecheckt';
+                    $('checkinPct').textContent = pct + '%';
+                    $('checkinBar').style.width = pct + '%';
+                    $('checkinPending').textContent = pending;
+                    $('checkinSold').textContent = sold;
+                    const rec = d.recent || [];
+                    const box = $('checkinRecent');
+                    if (!rec.length) {
+                        box.innerHTML = '<div style="color:var(--avo-text-muted);font-size:.85rem;">Noch keine Scans.</div>';
+                    } else {
+                        box.innerHTML = rec.map(function (x) {
+                            const name = esc(x.name || x.tid);
+                            const seat = x.seat_label ? ' · ' + esc(x.seat_label) : '';
+                            return '<div style="display:flex;justify-content:space-between;gap:1rem;font-size:.88rem;' +
+                                'border-bottom:1px solid color-mix(in oklab,var(--avo-border) 60%,transparent);padding:.3rem 0;">' +
+                                '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + name + seat + '</span>' +
+                                '<span style="color:var(--avo-text-muted);font-variant-numeric:tabular-nums;flex-shrink:0;">' +
+                                esc(fmtTime(x.used_at)) + '</span></div>';
+                        }).join('');
+                    }
+                } catch (e) { /* transient network/backend hiccup — keep last values */ }
+            }
+            poll();
+            setInterval(poll, 8000);
+        })();
+
+
         function initCharts() {
             const dates = <?php echo json_encode(array_keys($stats["soldByDate"] ?? [])); ?>;
             const soldData = <?php echo json_encode(array_values($stats["soldByDate"] ?? [])); ?>;
@@ -1709,6 +1827,7 @@ HTML;
                 subtitle: document.getElementById('eventSubtitle').value,
                 banner: document.getElementById('bannerUrl').value,
                 contact_email: document.getElementById('contactEmail').value,
+                app_domain: document.getElementById('appDomain').value.trim(),
                 store_lock: document.getElementById('storeLock').checked,
                 payment_methods: document.getElementById('paymentMethods').value,
                 dates: {}

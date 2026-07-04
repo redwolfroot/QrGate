@@ -1,6 +1,6 @@
 import quart
 import config.conf as config
-from assets.data import load_show, save_show
+from assets.data import load_show, save_show, location_capacity, seat_occupancy
 from reds_simple_logger import Logger
 import os
 import hmac
@@ -77,6 +77,12 @@ def edit_show(app=quart.Quart):
             if "contact_email" in data:
                 show["contact_email"] = str(data["contact_email"]).strip()
 
+            # Public app/frontend domain used to build links in emails (e.g. the
+            # self-service cancel link). Stored verbatim; scheme is normalized at
+            # use-time in ticket_manager.send_email.
+            if "app_domain" in data:
+                show["app_domain"] = str(data["app_domain"]).strip()
+
             save_show(show)
             return (
                 quart.jsonify({"status": "success", "message": "Show config saved"}),
@@ -86,6 +92,32 @@ def edit_show(app=quart.Quart):
             return quart.jsonify({"status": "error", "message": str(e)}), 500
 
 
+def _enrich_seated_availability(show: dict) -> None:
+    """For reserved-seating dates, the numeric tickets/tickets_available counters
+    are meaningless (seated sales live in seat_status, not that counter). Override
+    them in-place with the TRUTH derived from the seat map: capacity = number of
+    seats in the location's map, available = capacity − sold seats for that date.
+    General-admission dates are left untouched."""
+    dates = show.get("dates") if isinstance(show, dict) else None
+    if not isinstance(dates, dict):
+        return
+    cap_cache: dict = {}
+    for d in dates.values():
+        if not isinstance(d, dict) or not d.get("seating"):
+            continue
+        loc = d.get("location") or ""
+        try:
+            if loc not in cap_cache:
+                cap_cache[loc] = location_capacity(loc) if loc else 0
+            cap = cap_cache[loc]
+            occ = seat_occupancy(d.get("date")) if d.get("date") else {}
+            sold = sum(1 for s in occ.values() if s == "sold")
+            d["tickets"] = cap
+            d["tickets_available"] = max(0, cap - sold)
+        except Exception as e:
+            logger.error(f"seated availability enrichment failed for {d.get('date')}: {e}")
+
+
 def get_show(app=quart.Quart):
     @app.route("/api/show/get", methods=["POST", "GET"])
     async def get_show():
@@ -93,7 +125,7 @@ def get_show(app=quart.Quart):
             return quart.jsonify({"status": "error", "message": "Unauthorized"}), 401
         try:
             show: dict = load_show()
-
+            _enrich_seated_availability(show)
             return show, 200
         except Exception as e:
             return quart.jsonify({"status": "error", "message": str(e)}), 500

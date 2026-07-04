@@ -242,6 +242,41 @@ function qrgate_seat_order_total($validDate, array $seatIds)
 }
 
 /**
+ * Resolve human seat labels (e.g. "Row B · 12") for a list of seat ids, in the
+ * given order, from the authoritative availability data. Mirrors the backend's
+ * seat_index() label rule. Unknown ids fall back to the raw id.
+ */
+function qrgate_seat_labels($validDate, array $seatIds)
+{
+    $av = qrgate_seat_availability($validDate);
+    if (!is_array($av) || ($av['status'] ?? '') !== 'success') {
+        return array_map('strval', $seatIds);
+    }
+    $byId = [];
+    foreach (($av['elements'] ?? []) as $el) {
+        if (($el['type'] ?? '') === 'seat' && isset($el['id'])) {
+            $row = $el['row'] ?? '';
+            $num = $el['number'] ?? '';
+            if ($row !== '' && $num !== '') {
+                $label = $row . ' · ' . $num;
+            } elseif ($row !== '') {
+                $label = (string)$row;
+            } elseif ($num !== '') {
+                $label = (string)$num;
+            } else {
+                $label = (string)$el['id'];
+            }
+            $byId[(string)$el['id']] = $label;
+        }
+    }
+    $out = [];
+    foreach ($seatIds as $sid) {
+        $out[] = $byId[(string)$sid] ?? (string)$sid;
+    }
+    return $out;
+}
+
+/**
  * Validate + normalize a client-submitted seats payload into a flat list of
  * bounded strings, or return null if it is malformed.
  */

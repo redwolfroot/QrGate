@@ -107,6 +107,7 @@ $current_language = $_SESSION['language'] ?? 'en';
 if (!isset($languages[$current_language])) {
     $current_language = 'en';
 }
+$is_de = $current_language === 'de';
 // First visit (no language picked yet) → show the language chooser dialog on load.
 $showLangDialog = empty($_SESSION['language_selected']);
 $shows = getShows();
@@ -261,6 +262,9 @@ HTML;
            taller than the viewport, so nothing gets clipped/unreachable. */
         .wizard-step { width: 100%; max-width: 480px; margin-inline: auto; margin-block: auto; }
         .wizard-step[data-step="2"] { max-width: 1180px; margin-block: 0; }
+        /* General-admission step 2 has no seat map, so keep it narrow + centred
+           like the other steps instead of the wide, top-aligned map layout. */
+        .wizard-step[data-step="2"].ga-mode { max-width: 480px; margin-block: auto; }
         .wizard-heading { font-size: 1.35rem; font-weight: 700; margin-bottom: .35rem; }
         .wizard-sub { color: var(--avo-text-muted); font-size: .95rem; margin-bottom: 1.25rem; }
         .wizard-nav { flex: 0 0 auto; border-top: 1px solid var(--avo-border); padding: 1rem clamp(1rem, 4vw, 3rem); }
@@ -374,6 +378,67 @@ HTML;
             <button class="btn-primary result-btn" onclick="document.getElementById('message-dialog').close()">Okay</button>
         </div>
     </dialog>
+    <?php if (isset($_SESSION['success_ticket'])):
+        $st = $_SESSION['success_ticket'];
+        unset($_SESSION['success_ticket']);
+        // Superseded by this stub — consume the generic success flag so the plain
+        // dialog below doesn't also fire.
+        unset($_SESSION['success']);
+        $stubPaid = !empty($st['paid']);
+        // Note text is localized at RENDER time (follows the current UI language),
+        // not baked at purchase time, so it always matches the rest of the stub.
+        if ($stubPaid) {
+            $stubNote = $is_de
+                ? 'Ihre Tickets wurden erfasst und bezahlt. Sie erhalten sie in Kürze per E-Mail.'
+                : 'Your tickets are confirmed and paid. You will receive them by email shortly.';
+        } else {
+            $stubNote = $is_de
+                ? 'Sie erhalten Ihre Tickets in Kürze per E-Mail. Bitte bezahlen Sie am Veranstaltungstag an unserer Ticketkasse.'
+                : 'You will receive your tickets by email shortly. Please pay at our box office on the day of the event.';
+        }
+        $d = DateTime::createFromFormat('Y-m-d', (string)($st['date'] ?? ''));
+        $stubDate = $d ? $d->format('d.m.Y') : (string)($st['date'] ?? '');
+        $stubDateLine = $stubDate . (!empty($st['time']) ? ' · ' . $st['time'] : '');
+    ?>
+        <dialog id="booking-success" class="stub-dialog">
+            <div class="bx-ticket">
+                <div class="bx-top">
+                    <div class="bx-eyebrow">// TICKET</div>
+                    <div class="bx-event"><?php echo htmlspecialchars($st['event_name'] ?: 'Ticket'); ?></div>
+                </div>
+                <div class="bx-perf"><span class="bx-notch l"></span><span class="bx-notch r"></span></div>
+                <div class="bx-body">
+                    <div class="bx-rows">
+                        <?php if ($stubDateLine): ?>
+                        <div class="bx-row"><span class="bx-k"><?php echo $is_de ? 'Datum' : 'Date'; ?></span><span class="bx-v"><?php echo htmlspecialchars($stubDateLine); ?></span></div>
+                        <?php endif; ?>
+                        <?php if (!empty($st['seats'])): ?>
+                        <div class="bx-row"><span class="bx-k"><?php echo $is_de ? 'Plätze' : 'Seats'; ?></span><span class="bx-v"><span class="bx-seats"><?php foreach ($st['seats'] as $s): ?><span class="bx-seat">&#127903; <?php echo htmlspecialchars($s); ?></span><?php endforeach; ?></span></span></div>
+                        <?php else: ?>
+                        <div class="bx-row"><span class="bx-k">Tickets</span><span class="bx-v"><?php echo (int)$st['tickets']; ?></span></div>
+                        <?php endif; ?>
+                        <?php if (!empty($st['location'])): ?>
+                        <div class="bx-row"><span class="bx-k"><?php echo $is_de ? 'Ort' : 'Location'; ?></span><span class="bx-v"><?php echo htmlspecialchars($st['location']); ?></span></div>
+                        <?php endif; ?>
+                        <?php if (!empty($st['name'])): ?>
+                        <div class="bx-row"><span class="bx-k">Name</span><span class="bx-v"><?php echo htmlspecialchars($st['name']); ?></span></div>
+                        <?php endif; ?>
+                    </div>
+                    <div class="bx-result">
+                        <div class="bx-badge"><svg viewBox="0 0 52 52" fill="none" stroke="var(--avo-success)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path class="bx-draw" d="M14 27l8 8 16-18"/></svg></div>
+                        <div class="bx-title"><?php echo $stubPaid ? ($is_de ? 'Erfolgreich gekauft' : 'Successfully purchased') : ($is_de ? 'Erfolgreich gebucht' : 'Successfully booked'); ?></div>
+                        <?php if ($stubNote): ?><p class="bx-note"><?php echo htmlspecialchars($stubNote); ?></p><?php endif; ?>
+                    </div>
+                    <button class="bx-btn" type="button" onclick="document.getElementById('booking-success').close()"><?php echo $is_de ? 'Fertig' : 'Done'; ?></button>
+                </div>
+            </div>
+        </dialog>
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                document.getElementById('booking-success').showModal();
+            });
+        </script>
+    <?php endif; ?>
     <?php if (isset($_SESSION['error']) || isset($_SESSION['success'])): ?>
         <script>
             document.addEventListener('DOMContentLoaded', function () {
@@ -469,6 +534,41 @@ HTML;
         @keyframes checkDraw { to { stroke-dashoffset: 0; } }
         @keyframes resultRise { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         @keyframes resultShake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-7px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(3px); } }
+
+        /* ---- booking success: ticket-stub modal (mirrors the cancel page) ---- */
+        .stub-dialog { border: 0; background: transparent; padding: 0; margin: 0; max-width: 440px; width: calc(100% - 2rem); max-height: 92vh; overflow-y: auto; position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+        .stub-dialog::backdrop { background: rgba(0,0,0,.6); backdrop-filter: blur(3px); }
+        .stub-dialog[open] { animation: bxRise .5s cubic-bezier(.22,1,.36,1); }
+        .bx-ticket { position: relative; background: var(--avo-surface); border: 1px solid var(--avo-border); border-radius: 20px; overflow: hidden; box-shadow: 0 24px 60px -30px rgba(0,0,0,.55); }
+        .bx-top { position: relative; padding: 1.5rem 1.4rem 1.2rem; background: var(--avo-primary); background-image: linear-gradient(135deg, var(--avo-primary), color-mix(in oklab, var(--avo-primary) 60%, #000)); color: #fff; }
+        .bx-eyebrow { font-family: var(--avo-font-mono, monospace); font-size: .7rem; font-weight: 700; letter-spacing: .22em; opacity: .85; }
+        .bx-event { font-family: var(--avo-font-display); font-size: 1.4rem; font-weight: 800; line-height: 1.1; margin-top: .3rem; word-break: break-word; }
+        .bx-perf { position: relative; height: 0; border-top: 2.5px dashed color-mix(in oklab, var(--avo-text-muted) 65%, transparent); }
+        .bx-notch { position: absolute; top: -13px; width: 26px; height: 26px; border-radius: 50%; background: var(--avo-bg); }
+        .bx-notch.l { left: -13px; } .bx-notch.r { right: -13px; }
+        .bx-body { padding: 1.3rem 1.4rem 1.5rem; }
+        .bx-rows { display: flex; flex-direction: column; }
+        .bx-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .55rem 0; border-bottom: 1px solid color-mix(in oklab, var(--avo-border) 55%, transparent); }
+        .bx-row:last-child { border-bottom: 0; }
+        .bx-k { font-size: .66rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--avo-text-muted); }
+        .bx-v { font-weight: 700; color: var(--avo-text); text-align: right; word-break: break-word; }
+        .bx-seats { display: flex; flex-wrap: wrap; gap: .35rem; justify-content: flex-end; }
+        .bx-seat { display: inline-flex; align-items: center; gap: .3rem; padding: .3rem .6rem; border-radius: 999px; font-family: var(--avo-font-display); font-weight: 800; font-size: .9rem; color: var(--avo-primary); background: color-mix(in oklab, var(--avo-primary) 14%, transparent); border: 1px solid color-mix(in oklab, var(--avo-primary) 40%, transparent); }
+        .bx-result { display: flex; flex-direction: column; align-items: center; text-align: center; gap: .5rem; margin-top: 1.3rem; }
+        .bx-badge { width: 72px; height: 72px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: color-mix(in oklab, var(--avo-success) 18%, transparent); }
+        .bx-badge svg { width: 42px; height: 42px; }
+        .bx-badge .bx-draw { stroke-dasharray: 48; stroke-dashoffset: 48; }
+        .stub-dialog[open] .bx-badge .bx-draw { animation: bxCheck .5s .2s ease forwards; }
+        .bx-title { font-family: var(--avo-font-display); font-size: 1.3rem; font-weight: 800; color: var(--avo-success); }
+        .bx-note { font-size: .85rem; line-height: 1.6; color: var(--avo-text-muted); margin: 0; }
+        .bx-btn { width: 100%; min-height: 50px; border: 0; border-radius: 12px; font-weight: 800; font-size: 1rem; cursor: pointer; margin-top: 1.1rem; background: var(--avo-primary); color: #fff; transition: filter .2s ease; }
+        .bx-btn:hover { filter: brightness(1.07); }
+        @keyframes bxRise { from { opacity: 0; transform: translate(-50%, calc(-50% + 20px)) scale(.98); } to { opacity: 1; transform: translate(-50%, -50%); } }
+        @keyframes bxCheck { to { stroke-dashoffset: 0; } }
+        @media (prefers-reduced-motion: reduce) {
+            .stub-dialog[open] { animation: none; }
+            .stub-dialog[open] .bx-badge .bx-draw { animation: none; stroke-dashoffset: 0; }
+        }
     </style>
     <dialog id="bookingModal" class="dialog w-full sm:max-w-[425px]" aria-labelledby="demo-dialog-edit-profile-title"
         onclick="if (event.target === this) this.close()">
@@ -571,15 +671,25 @@ HTML;
 
                     <!-- STEP 2 — tickets / seats -->
                     <div class="wizard-step hidden grid gap-4" data-step="2">
-                        <div id="gaTicketWrap" class="grid gap-2">
-                            <label for="tickets"><?php echo $L['number_of_tickets']; ?></label>
-                            <select name="tickets" id="tickets" required>
+                        <div id="gaTicketWrap" class="grid gap-4" style="max-width:22rem;margin:0 auto;text-align:center;">
+                            <div class="text-lg font-semibold" style="color:var(--avo-text);"><?php echo $L['number_of_tickets']; ?></div>
+                            <div class="flex items-center justify-center gap-4">
+                                <button type="button" id="gaMinus" class="btn-secondary" style="padding:.4rem 1.1rem;line-height:1;font-size:1.6rem;" aria-label="−">−</button>
+                                <span id="gaCountVal" class="font-bold" style="min-width:2.5rem;text-align:center;font-size:2rem;color:var(--avo-text);">1</span>
+                                <button type="button" id="gaPlus" class="btn-secondary" style="padding:.4rem 1.1rem;line-height:1;font-size:1.6rem;" aria-label="+">+</button>
+                            </div>
+                            <!-- Source-of-truth select kept (hidden) so existing validation / summary /
+                                 availability JS keeps working; the stepper above drives it. -->
+                            <select name="tickets" id="tickets" required class="hidden" aria-hidden="true" tabindex="-1">
                                 <?php for ($i = 1; $i <= 10; $i++) { ?>
                                     <option value="<?php echo $i; ?>">
                                         <?php echo $i . ' Ticket' . (($i > 1 ? 's' : '')); ?>
                                     </option>
                                 <?php } ?>
                             </select>
+                            <!-- Extra-ticket name fields render here (moved in from below so they sit
+                                 with the amount, matching the seated flow). -->
+                            <div id="nameFieldsContainer" class="grid gap-3" style="text-align:left;"></div>
                         </div>
 
                         <!-- Reserved-seating picker (shown only for seated dates) -->
@@ -619,8 +729,6 @@ HTML;
                                 <div id="seatHoldTimer" class="text-xs hidden" style="color:var(--avo-primary);font-weight:600;"></div>
                             </div>
                         </div>
-
-                        <div id="nameFieldsContainer" class="grid gap-3"></div>
                     </div>
 
                     <!-- STEP 3 — payment method -->
@@ -1499,7 +1607,7 @@ HTML;
                             const label = document.createElement('label');
                             label.className = 'block text-sm font-medium avo-muted';
 
-                            label.textContent = `Name for Ticket ${i}`;
+                            label.textContent = '<?php echo addslashes($current_language === "de" ? "Name für Ticket" : "Name for Ticket"); ?> ' + i;
 
                             const input = document.createElement('input');
                             input.type = 'text';
@@ -1528,8 +1636,43 @@ HTML;
                     updateNameFields();
                 }
 
+                // General-admission +/- stepper. The hidden <select name="tickets">
+                // stays the single source of truth (validation/summary/availability
+                // all read it); the buttons just write it and fire 'change' so the
+                // name fields + everything else stay in sync.
+                function gaStepperInit() {
+                    const sel = document.getElementById('tickets');
+                    const val = document.getElementById('gaCountVal');
+                    const minus = document.getElementById('gaMinus');
+                    const plus = document.getElementById('gaPlus');
+                    if (!sel || !val || !minus || !plus) return;
+
+                    function sync() {
+                        const n = parseInt(sel.value, 10) || 1;
+                        val.textContent = String(n);
+                        minus.disabled = n <= 1;
+                        plus.disabled = n >= (sel.options.length || 1);
+                    }
+                    function step(delta) {
+                        const n = parseInt(sel.value, 10) || 1;
+                        const max = sel.options.length || 1;
+                        const next = Math.min(max, Math.max(1, n + delta));
+                        if (next === n) return;
+                        sel.value = String(next);
+                        sel.dispatchEvent(new Event('change', { bubbles: true }));
+                        sync();
+                    }
+                    minus.addEventListener('click', () => step(-1));
+                    plus.addEventListener('click', () => step(1));
+                    sel.addEventListener('change', sync);
+                    // Let the modal-open code resync after it rebuilds the options.
+                    window.gaStepperSync = sync;
+                    sync();
+                }
+
 
                 document.addEventListener('DOMContentLoaded', initTicketSelector);
+                document.addEventListener('DOMContentLoaded', gaStepperInit);
 
 
                 function updatePaymentMethodButtons() {
@@ -2225,13 +2368,16 @@ HTML;
 
                     const gaWrap = document.getElementById('gaTicketWrap');
                     const seatWrap = document.getElementById('seatPickerWrap');
+                    const step2 = document.querySelector('.wizard-step[data-step="2"]');
                     if (window.isSeated) {
                         gaWrap.classList.add('hidden');
                         seatWrap.classList.remove('hidden');
+                        if (step2) step2.classList.remove('ga-mode'); // wide, top-aligned for the map
                         loadSeatAvailability(date);
                     } else {
                         gaWrap.classList.remove('hidden');
                         seatWrap.classList.add('hidden');
+                        if (step2) step2.classList.add('ga-mode'); // narrow, centred
                     }
 
                     // Persistent context banner: show chosen date + location on every step.
@@ -2260,6 +2406,9 @@ HTML;
                         option.textContent = `${i} Ticket${i > 1 ? 's' : ''}`;
                         ticketsSelect.appendChild(option);
                     }
+                    // Options were rebuilt for this date's availability — resync the
+                    // stepper display + button bounds to match.
+                    if (window.gaStepperSync) window.gaStepperSync();
 
                     // Clear any name/email from a previous booking, then start fresh at step 1.
                     document.querySelector('input[name="first_name"]').value = '';

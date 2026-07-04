@@ -32,8 +32,9 @@ QrGate is a comprehensive system for managing events, tickets, and access contro
 - **Reserved Seating**: Optional per-event seat maps with a visual seat picker — choose the amount first, then tap the hall; an **auto best-seats / snap** helper places adjacent seats and avoids stranding lone gaps. Live availability polling plus atomic 10-minute seat holds keep two buyers from grabbing the same seat
 - **Binding Booking Consent**: Mandatory consent checkbox plus cancellation/storno info, enforced server-side; configurable contact email shown to customers
 - **Ticket Delivery**: PDF tickets by email with the QR code embedded inline (generated in-memory — A4 e-ticket, A5 box-office layout, and multi-ticket batch prints)
-- **Access Control**: QR code-based ticket validation for entry, with a mobile handheld scanner
-- **Admin Panel**: Dashboard for events, dates, locations, images, tickets and statistics
+- **Self-Service Cancellation**: Every ticket email carries a secure, per-ticket cancel link — the buyer can cancel up to 24 hours before the event, with automatic Stripe refunds for online payments and the seat released back to the pool
+- **Access Control**: QR code-based ticket validation for entry, with a mobile handheld scanner — a re-scanned (already used) ticket triggers a loud **double-entry alarm** showing when it was first scanned
+- **Admin Panel**: Dashboard for events, dates, locations, images, tickets and statistics, plus a **live door check-in monitor** (checked-in vs. sold, occupancy %, latest scans)
 - **Maintenance & Data Tools**: One-click **database backup** download plus a guarded danger zone (wipe data, reinstall, factory reset)
 - **Multi-language Support**: German and English
 - **Responsive Design**: Optimized for desktop and mobile, light **and** dark
@@ -290,6 +291,8 @@ QrGate/
 │   │   ├── seatmap-editor.js# Konva-based hall designer
 │   │   └── seatmap-proxy.php# Admin seat map get/save proxy
 │   ├── seat-proxy.php       # Buyer seat availability + hold/release proxy
+│   ├── cancel.php           # Self-service ticket cancellation page (email link)
+│   ├── cancel-proxy.php     # Token-gated self-cancel proxy (POST only)
 │   ├── help/                # Help pages
 │   ├── screens/             # Event display / projection screens
 │   ├── vote/                # Public audience voting page
@@ -335,6 +338,7 @@ QrGate/
 The admin panel provides the following features:
 
 - **Dashboard**: Overview of sold tickets, available tickets, and estimated revenue
+- **Live Door Check-in**: Real-time monitor of checked-in vs. sold tickets per date, occupancy %, and the latest scans (auto-refreshing)
 - **Statistics**: Graphical display of ticket sales and availability
 - **Event Management**: Edit event settings, locations, and screens/projection displays
 - **Seat Map Editor**: Visual per-location hall designer (seats, rows, tables, stage/screen, walls, labels) with fast row/block fill, price categories, and seat auto-numbering
@@ -356,7 +360,9 @@ All `/api/*` routes require the `Authorization: {auth_key}` header, except the p
 | `/api/ticket/get` | GET/POST | Look up a ticket by id |
 | `/api/ticket/edit` | POST | Edit a ticket |
 | `/api/ticket/cancel` | POST | Cancel ticket (+ Stripe refund) |
+| `/api/ticket/self-cancel` | POST | Buyer self-cancel from the email link (public, gated by per-ticket HMAC token; 24h deadline; auto refund) |
 | `/api/ticket/validate` | GET/POST | Validate/scan a ticket at the door |
+| `/api/stats/checkins` | GET | Live per-date check-in counts + latest scans (admin dashboard) |
 | `/codes/pdf?tid=X&token=Y` | GET | Download ticket PDF (gated by per-ticket HMAC token, not the auth key; `?tids=&tokens=` for batches) |
 | `/api/show/get` | GET/POST | Full event config |
 | `/api/show/edit` | POST | Update event config |

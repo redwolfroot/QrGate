@@ -3,6 +3,7 @@ import quart
 from typing import Dict, Any
 from reds_simple_logger import Logger
 from assets.data import load_show, _load_stats_dict, _save_stats_dict, log_sale
+from assets.data import checkin_stats, recent_checkins
 from assets.timeutil import today_iso
 import config.conf as config # type: ignore
 
@@ -70,4 +71,26 @@ def get_stats_api(app=quart.Quart):
             }), 200
         except Exception as e:
             logger.error(f"Error getting stats: {str(e)}")
+            return quart.jsonify({"status": "error", "message": "Internal server error"}), 500
+
+
+def get_checkins_api(app=quart.Quart):
+    @app.route("/api/stats/checkins", methods=["GET"])   # type: ignore
+    async def get_checkins():
+        """Live door check-in stats: per-date sold/checked-in/pending counts plus
+        the most recent entries. Polled by the admin dashboard."""
+        key = quart.request.headers.get("Authorization")
+        if not key or not hmac.compare_digest(str(key), str(config.Auth.auth_key)):
+            return quart.jsonify({"status": "error", "message": "Unauthorized"}), 401
+        try:
+            return quart.jsonify({
+                "status": "success",
+                "data": {
+                    "by_date": checkin_stats(),
+                    "today": today_iso(),
+                    "recent": recent_checkins(20),
+                },
+            }), 200
+        except Exception as e:
+            logger.error(f"Error getting checkins: {str(e)}")
             return quart.jsonify({"status": "error", "message": "Internal server error"}), 500

@@ -349,6 +349,8 @@ HTML;
             payloadKey: 'ticketId',
             validText: 'Gültig',
             invalidText: 'Ungültig',
+            reuseText: 'Bereits eingelöst!',
+            reuseHint: 'Zuerst gescannt:',
             showTimeline: false
         };
     </script>

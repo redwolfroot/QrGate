@@ -17,6 +17,7 @@ header('Content-Type: application/json');
 // Allowed endpoints for admin
 $allowedEndpoints = [
     'stats' => '/api/stats',
+    'checkins' => '/api/stats/checkins',
     'show' => '/api/show/get',
     'show_edit' => '/api/show/edit',
     'images' => '/api/image/current',

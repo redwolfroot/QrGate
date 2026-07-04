@@ -232,6 +232,19 @@ body {
 }
 .hh-result.valid   .hh-result__head { background: var(--avo-success); }
 .hh-result.invalid .hh-result__head { background: var(--avo-error); }
+/* A re-scanned (already used) ticket: pulsing red so it reads as an ALARM, not
+   an ordinary denial. Sits on top of the .invalid rule above. */
+.hh-result.reuse .hh-result__head {
+  background: var(--avo-error);
+  animation: hh-alarm-pulse 0.7s ease-in-out infinite;
+}
+@keyframes hh-alarm-pulse {
+  0%, 100% { background: var(--avo-error); }
+  50%      { background: #7f1010; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hh-result.reuse .hh-result__head { animation: none; }
+}
 .hh-result__icon {
   width: 72px; height: 72px; margin: 0 auto 14px;
   display: flex; align-items: center; justify-content: center;
@@ -300,6 +313,24 @@ body {
 .hh-stat__lbl { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--avo-text-muted); margin-top: 5px; }
 .hh-stat.ok  .hh-stat__num { color: var(--avo-success); }
 .hh-stat.no  .hh-stat__num { color: var(--avo-error); }
+
+/* re-use alarm banner (top of result body when an already-used ticket is rescanned) */
+.hh-alarm {
+  display: flex; align-items: center; gap: 14px;
+  margin: 10px 0 4px;
+  padding: 16px 16px;
+  border-radius: var(--avo-radius-lg);
+  background: color-mix(in oklab, var(--avo-error) 18%, transparent);
+  border: 2px solid var(--avo-error);
+}
+.hh-alarm__ico { flex-shrink: 0; width: 34px; height: 34px; color: var(--avo-error); }
+.hh-alarm__main { min-width: 0; }
+.hh-alarm__t {
+  font-family: var(--avo-font-display);
+  font-size: 1.15rem; font-weight: 800; color: var(--avo-error);
+  text-transform: uppercase; letter-spacing: 0.02em;
+}
+.hh-alarm__s { margin-top: 3px; font-size: 0.9rem; font-weight: 600; color: var(--avo-text); }
 
 .hh-timeline { margin-top: 14px; }
 .hh-timeline h4 {

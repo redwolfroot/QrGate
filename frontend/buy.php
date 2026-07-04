@@ -87,7 +87,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'price'      => (float)$_POST['price'],
             'paid'       => false,
             'method'     => $_POST['payment_method'],
-            'add_people' => $addPeople
+            'add_people' => $addPeople,
+            // Buyer's current UI language → localizes the ticket email + PDF.
+            'lang'       => in_array(($_SESSION['language'] ?? 'en'), ['de', 'en'], true)
+                ? ($_SESSION['language'] ?? 'en') : 'en',
         ];
 
         // Enforce the same maximum as the UI (1–10 tickets).
@@ -109,12 +112,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $matchedPrice = null;
         $matchedSeating = false;
+        $matchedTime = '';
+        $matchedLocId = null;
         foreach ($show['dates'] as $dateData) {
             if (($dateData['date'] ?? null) === $ticketData['valid_date']) {
                 $matchedPrice = (float)$dateData['price'];
                 $matchedSeating = !empty($dateData['seating']);
+                $matchedTime = $dateData['time'] ?? '';
+                $matchedLocId = $dateData['location'] ?? null;
                 break;
             }
+        }
+        $matchedLocName = '';
+        if ($matchedLocId !== null && isset($show['locations'][$matchedLocId]['name'])) {
+            $matchedLocName = $show['locations'][$matchedLocId]['name'];
         }
 
         if ($matchedPrice === null) {
@@ -149,6 +160,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $ticketData['seats'] = $seats;
             $ticketData['hold_token'] = $holdToken;
         }
+
+        // Resolve seat labels (seated orders) for the success ticket card.
+        $seatLabels = ($matchedSeating && !empty($ticketData['seats']))
+            ? qrgate_seat_labels($ticketData['valid_date'], $ticketData['seats'])
+            : [];
+
+        // Stash the confirmed booking details so index.php can render the
+        // ticket-stub success screen (mirrors the cancel page's stub).
+        $setSuccessTicket = function (bool $paid) use ($show, $ticketData, $matchedTime, $matchedLocName, $seatLabels) {
+            $_SESSION['success_ticket'] = [
+                'event_name' => $show['orga_name'] ?? '',
+                'date'       => $ticketData['valid_date'],
+                'time'       => $matchedTime,
+                'location'   => $matchedLocName,
+                'name'       => trim($ticketData['first_name'] . ' ' . $ticketData['last_name']),
+                'tickets'    => (int)$ticketData['tickets'],
+                'seats'      => $seatLabels,
+                'paid'       => $paid,
+            ];
+        };
 
         if ($ticketData['method'] === 'bar') {
             // Rate-limit unpaid cash bookings: they create real tickets and send
@@ -201,6 +232,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'en' => 'Your tickets have been successfully submitted to the system. You will receive your tickets by email shortly. Please pay your tickets on the day of the event at our ticket counter.',
                 ];
                 $_SESSION['success'] = $successMessages[$lang] ?? $successMessages['en'];
+                $setSuccessTicket(false);
             } else {
                 throw new Exception('Ticket could not be created!');
             }
@@ -311,6 +343,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'en' => 'Your tickets have been successfully entered and paid for. You will receive your tickets by email shortly.',
                 ];
                 $_SESSION['success'] = $successMessages[$lang] ?? $successMessages['en'];
+                $setSuccessTicket(true);
             } else {
                 throw new Exception('Ticket could not be created. Please contact the organizer with your payment reference ' . $intentId . '.');
             }

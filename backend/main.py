@@ -16,7 +16,7 @@ from assets.manage_show import get_show, edit_show, cast_image_upload
 from assets.data import img_show, init_db
 from assets.vote import vote
 from assets.user import user_check
-from assets.stats import get_stats_api
+from assets.stats import get_stats_api, get_checkins_api
 from assets.image_manager import upload_image, get_image, get_current_images
 from assets.accounts import init_accounts, auth_routes, user_routes
 from assets.setup import init_setup, setup_routes, apply_settings_to_config, is_installed
@@ -55,6 +55,7 @@ _RATE_LIMITS = {
     "/api/ticket/validate": (120, 10),   # ~12 scans/s/IP across all door staff
     "/api/ticket/create": (20, 60),      # buying is slow & human-paced
     "/api/ticket/cancel": (30, 60),      # admin-driven refunds, human-paced
+    "/api/ticket/self-cancel": (10, 60), # public storno link, token-gated
     "/api/auth/login": (10, 300),        # login brute-force guard
     "/api/user/check": (30, 60),
     "/api/vote": (10, 60),
@@ -132,6 +133,7 @@ img_show(app)
 vote(app)
 user_check(app)
 get_stats_api(app)
+get_checkins_api(app)
 upload_image(app)
 get_image(app)
 get_current_images(app)

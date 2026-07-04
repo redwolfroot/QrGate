@@ -17,6 +17,7 @@ from assets.stats import log_ticket_sale, log_ticket_refund
 from assets.timeutil import local_now
 import asyncio
 import os
+import re
 import hashlib
 import hmac
 import urllib.parse
@@ -80,6 +81,78 @@ def _token_valid(tid: str, token: Optional[str]) -> bool:
     return hmac.compare_digest(str(token), ticket_token(tid))
 
 
+# --------------------------------------------------------------------------- #
+# Ticket i18n for the generated PDF + email. Keyed by the buyer's UI language at
+# purchase time (stored on the ticket as `lang`); unknown/missing falls back to
+# English. "// TICKET" and the avocloud footer stay brand-constant.
+# --------------------------------------------------------------------------- #
+TICKET_I18N = {
+    "en": {
+        "label_NAME": "NAME", "label_DATE": "DATE", "label_TIME": "TIME",
+        "label_SEAT": "SEAT", "label_LOCATION": "LOCATION", "label_ADDRESS": "ADDRESS",
+        "pdf_simple_note": "Show this ticket at the entrance.",
+        "pdf_std_note1": "Have this QR code ready at the entrance — it will be "
+                         "scanned and validated on entry.",
+        "pdf_std_note2": "Each ticket is valid for a single entry and only on the "
+                         "date shown above. To re-enter, ask for a stamp or "
+                         "wristband at the exit.",
+        "email_head_paid": 'Your ticket has been <span style="color:#C73D20;">paid</span>',
+        "email_status_paid_onsite": "Your ticket was paid for on site — this email "
+            "confirms the payment. Your ticket below (and the attached PDF) is "
+            "ready for entry.",
+        "email_head_ready": 'Your ticket is <span style="color:#C73D20;">ready</span>',
+        "email_status_ready": "Your ticket is paid and ready to use.",
+        "email_head_ticket": 'Your <span style="color:#C73D20;">ticket</span>',
+        "email_status_unpaid": "Your ticket has not been paid yet, so it can't be "
+            "used. Please pay at the entrance on the day of the event to activate it.",
+        "email_usage": "Have this QR code ready at the entrance — it is scanned and "
+            "validated on entry. Each ticket is valid for a single entry on the date "
+            "shown above. To re-enter, ask for a stamp or wristband at the exit. Your "
+            "ticket is also attached as a PDF.",
+        "email_cancel_pre": "Can't make it? ",
+        "email_cancel_link": "Cancel this ticket",
+        "email_cancel_post": " (a refund is issued automatically for online payments, "
+            "up to 24 hours before the event).",
+        "footer": "Managed by QrGate · avocloud.net",
+    },
+    "de": {
+        "label_NAME": "NAME", "label_DATE": "DATUM", "label_TIME": "UHRZEIT",
+        "label_SEAT": "PLATZ", "label_LOCATION": "ORT", "label_ADDRESS": "ADRESSE",
+        "pdf_simple_note": "Bitte dieses Ticket am Eingang vorzeigen.",
+        "pdf_std_note1": "Halten Sie diesen QR-Code am Eingang bereit — er wird beim "
+                         "Einlass gescannt und geprüft.",
+        "pdf_std_note2": "Jedes Ticket gilt für einen einmaligen Eintritt und nur am "
+                         "oben angegebenen Datum. Für den Wiedereinlass bitte am "
+                         "Ausgang einen Stempel oder ein Bändchen verlangen.",
+        "email_head_paid": 'Ihr Ticket wurde <span style="color:#C73D20;">bezahlt</span>',
+        "email_status_paid_onsite": "Ihr Ticket wurde vor Ort bezahlt — diese E-Mail "
+            "bestätigt die Zahlung. Ihr Ticket unten (und das angehängte PDF) ist "
+            "bereit für den Einlass.",
+        "email_head_ready": 'Ihr Ticket ist <span style="color:#C73D20;">bereit</span>',
+        "email_status_ready": "Ihr Ticket ist bezahlt und einsatzbereit.",
+        "email_head_ticket": 'Ihr <span style="color:#C73D20;">Ticket</span>',
+        "email_status_unpaid": "Ihr Ticket wurde noch nicht bezahlt und kann daher "
+            "nicht verwendet werden. Bitte bezahlen Sie am Veranstaltungstag am "
+            "Eingang, um es zu aktivieren.",
+        "email_usage": "Halten Sie diesen QR-Code am Eingang bereit — er wird beim "
+            "Einlass gescannt und geprüft. Jedes Ticket gilt für einen einmaligen "
+            "Eintritt am oben angegebenen Datum. Für den Wiedereinlass bitte am "
+            "Ausgang einen Stempel oder ein Bändchen verlangen. Ihr Ticket ist "
+            "außerdem als PDF angehängt.",
+        "email_cancel_pre": "Verhindert? ",
+        "email_cancel_link": "Ticket stornieren",
+        "email_cancel_post": " (bei Online-Zahlung wird der Betrag automatisch "
+            "zurückerstattet, bis 24 Stunden vor der Veranstaltung).",
+        "footer": "Verwaltet mit QrGate · avocloud.net",
+    },
+}
+
+
+def _tx(lang):
+    """Translation table for a ticket's language (falls back to English)."""
+    return TICKET_I18N.get(str(lang or "en").lower(), TICKET_I18N["en"])
+
+
 # ---- avocloud brand palette for PDFs (mirrors frontend/assets/avocloud.css) ----
 PDF_CORAL = colors.HexColor("#C73D20")
 PDF_CORAL_LIGHT = colors.HexColor("#FFD1C6")
@@ -94,6 +167,41 @@ SIMPLE_CONTENT_W = A5[0] - 2 * SIMPLE_MARGIN
 # A4 public-shop ticket geometry
 STD_MARGIN = 36
 STD_CONTENT_W = A4[0] - 2 * STD_MARGIN
+
+
+def _perforation(width: float, pad_top: int = 6, pad_bottom: int = 6):
+    """A dashed perforation seam (the ticket-stub tear line) spanning `width`,
+    matching the web/email stub. Drawn as a graphics Line so the dashes render
+    reliably, with the surrounding whitespace baked into the drawing height."""
+    from reportlab.graphics.shapes import Drawing, Line
+
+    d = Drawing(width, pad_top + pad_bottom + 2)
+    y = pad_bottom + 1
+    ln = Line(0, y, width, y)
+    ln.strokeColor = colors.HexColor("#B0AC9F")
+    ln.strokeWidth = 1.3
+    ln.strokeDashArray = [4, 4]
+    d.add(ln)
+    return d
+
+
+def _seat_pill(text: str, font_size: float = 12):
+    """A coral rounded 'pill' flowable for the reserved seat, mirroring the web
+    stub's seat chip. Text-only (Helvetica has no ticket emoji glyph)."""
+    st = ParagraphStyle(
+        "seat_pill", fontName="Helvetica-Bold", fontSize=font_size,
+        textColor=PDF_CORAL, leading=font_size + 3,
+    )
+    pill = Table([[Paragraph(str(text), st)]], hAlign="LEFT")
+    pill.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), PDF_CORAL_LIGHT),
+        ("LEFTPADDING", (0, 0), (-1, -1), 11),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 11),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("ROUNDEDCORNERS", [9, 9, 9, 9]),
+    ]))
+    return pill
 
 
 def _fmt_ticket_date(d: str) -> str:
@@ -162,12 +270,15 @@ def simple_ticket_flowables(
     date: str,
     event_time: str,
     show_data: dict,
+    seat_label: str = "",
+    lang: str = "en",
 ):
     """
     Flowables for ONE box-office ticket on an A5 page, avocloud-branded:
     coral header band, clean label/value info rows, framed QR, mono ID, footer.
     Shared by the single-ticket PDF and the combined batch PDF so they match.
     """
+    T = _tx(lang)
     base = getSampleStyleSheet()
 
     eyebrow_style = ParagraphStyle(
@@ -216,7 +327,7 @@ def simple_ticket_flowables(
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
     els.append(banner)
-    els.append(Spacer(1, 24))
+    els.append(_perforation(SIMPLE_CONTENT_W, pad_top=9, pad_bottom=16))
 
     # --- info rows (label / value) ---
     fn = str(first_name).strip() if _meaningful(first_name) else ""
@@ -224,20 +335,28 @@ def simple_ticket_flowables(
     full_name = f"{fn} {ln}".strip()
     rows = []
     if full_name:                      # omit NAME row for unnamed/"Unknown" tickets
-        rows.append(("NAME", full_name))
+        rows.append((T["label_NAME"], full_name))
     date_val = _fmt_ticket_date(date) if date else ""
     if date_val:                       # always show a date (real date or "Unlimited")
-        rows.append(("DATE", date_val))
+        rows.append((T["label_DATE"], date_val))
         if date != "Unlimited" and event_time:
-            rows.append(("TIME", event_time))
+            rows.append((T["label_TIME"], event_time))
+    if _meaningful(seat_label):
+        rows.append((T["label_SEAT"], str(seat_label).strip()))
     loc_name, loc_addr = _location_for_date(date, show_data)
     if loc_name:
-        rows.append(("LOCATION", loc_name))
+        rows.append((T["label_LOCATION"], loc_name))
     if loc_addr:
-        rows.append(("ADDRESS", loc_addr))
+        rows.append((T["label_ADDRESS"], loc_addr))
     if rows:
         info = Table(
-            [[Paragraph(l, label_style), Paragraph(v, value_style)] for l, v in rows],
+            [
+                [
+                    Paragraph(l, label_style),
+                    _seat_pill(v, 11) if l == "SEAT" else Paragraph(v, value_style),
+                ]
+                for l, v in rows
+            ],
             colWidths=[SIMPLE_CONTENT_W * 0.26, SIMPLE_CONTENT_W * 0.74],
         )
         info.setStyle(TableStyle([
@@ -266,7 +385,7 @@ def simple_ticket_flowables(
     els.append(Spacer(1, 12))
     els.append(Paragraph(tid, id_style))
     els.append(Spacer(1, 20))
-    els.append(Paragraph("Show this ticket at the entrance.", note_style))
+    els.append(Paragraph(T["pdf_simple_note"], note_style))
     els.append(Spacer(1, 6))
     els.append(Paragraph("QrGate · avocloud.net", foot_style))
     return els
@@ -279,6 +398,8 @@ def standard_ticket_flowables(
     date: str,
     event_time: str,
     show_data: dict,
+    seat_label: str = "",
+    lang: str = "en",
 ):
     """
     Flowables for the full A4 public-shop ticket, avocloud-branded:
@@ -286,6 +407,7 @@ def standard_ticket_flowables(
     a large framed QR with mono ID, concise usage notes, and a footer.
     Visual sibling of simple_ticket_flowables, scaled up for A4.
     """
+    T = _tx(lang)
     base = getSampleStyleSheet()
 
     eyebrow_style = ParagraphStyle(
@@ -341,7 +463,8 @@ def standard_ticket_flowables(
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
     els.append(hero)
-    els.append(Spacer(1, 18))
+    # Perforation seam right under the coral band (ticket-stub cut).
+    els.append(_perforation(STD_CONTENT_W, pad_top=10, pad_bottom=14))
 
     # --- info card (label / value rows) ---
     fn = str(first_name).strip() if _meaningful(first_name) else ""
@@ -349,20 +472,28 @@ def standard_ticket_flowables(
     full_name = f"{fn} {ln}".strip()
     rows = []
     if full_name:                      # omit NAME row for unnamed/"Unknown" tickets
-        rows.append(("NAME", full_name))
+        rows.append((T["label_NAME"], full_name))
     date_val = _fmt_ticket_date(date) if date else ""
     if date_val:                       # always show a date (real date or "Unlimited")
-        rows.append(("DATE", date_val))
+        rows.append((T["label_DATE"], date_val))
         if date != "Unlimited" and event_time:
-            rows.append(("TIME", event_time))
+            rows.append((T["label_TIME"], event_time))
+    if _meaningful(seat_label):
+        rows.append((T["label_SEAT"], str(seat_label).strip()))
     loc_name, loc_addr = _location_for_date(date, show_data)
     if loc_name:
-        rows.append(("LOCATION", loc_name))
+        rows.append((T["label_LOCATION"], loc_name))
     if loc_addr:
-        rows.append(("ADDRESS", loc_addr))
+        rows.append((T["label_ADDRESS"], loc_addr))
     if rows:
         info = Table(
-            [[Paragraph(l, label_style), Paragraph(v, value_style)] for l, v in rows],
+            [
+                [
+                    Paragraph(l, label_style),
+                    _seat_pill(v, 13) if l == "SEAT" else Paragraph(v, value_style),
+                ]
+                for l, v in rows
+            ],
             colWidths=[STD_CONTENT_W * 0.22, STD_CONTENT_W * 0.78],
         )
         info.setStyle(TableStyle([
@@ -396,9 +527,8 @@ def standard_ticket_flowables(
 
     # --- usage notes ---
     notes = [
-        "Have this QR code ready at the entrance — it will be scanned and validated on entry.",
-        "Each ticket is valid for a single entry and only on the date shown above. "
-        "To re-enter, ask for a stamp or wristband at the exit.",
+        T["pdf_std_note1"],
+        T["pdf_std_note2"],
     ]
     for n in notes:
         els.append(Paragraph(n, note_style))
@@ -409,7 +539,7 @@ def standard_ticket_flowables(
     div.setStyle(TableStyle([("LINEABOVE", (0, 0), (-1, -1), 0.5, PDF_LINE)]))
     els.append(div)
     els.append(Spacer(1, 8))
-    els.append(Paragraph("Managed by QrGate · avocloud.net", foot_style))
+    els.append(Paragraph(T["footer"], foot_style))
     return els
 
 
@@ -453,6 +583,8 @@ def create_ticket(app=quart.Quart):
                 )
             add_people: list = data.get("add_people", [])
             t_type: str = str(data.get("type", "visitor"))
+            # Buyer's UI language at purchase; drives the email + PDF localization.
+            lang: str = str(data.get("lang") or "en").lower()
             date = load_date(valid_date)
             if not date:
                 return (
@@ -607,6 +739,7 @@ def create_ticket(app=quart.Quart):
                     "seat_id": sa.get("seat_id"),
                     "seat_label": sa.get("seat_label"),
                     "location": location_id if seated else None,
+                    "lang": lang,
                 }
                 await asyncio.to_thread(save_tickets, main_tid, ticket)
                 created_tids.append(main_tid)
@@ -632,6 +765,7 @@ def create_ticket(app=quart.Quart):
                         "seat_id": sa.get("seat_id"),
                         "seat_label": sa.get("seat_label"),
                         "location": location_id if seated else None,
+                        "lang": lang,
                     }
                     await asyncio.to_thread(save_tickets, tid, ticket)
                     created_tids.append(tid)
@@ -657,6 +791,7 @@ def create_ticket(app=quart.Quart):
                     paid,
                     date=valid_date,
                     event_time=date["time"],
+                    lang=lang,
                 )
                 for tid, person in zip(created_tids[1:], add_people):
                     await send_email(
@@ -667,6 +802,7 @@ def create_ticket(app=quart.Quart):
                         paid,
                         date=valid_date,
                         event_time=date["time"],
+                        lang=lang,
                     )
             except Exception as mail_err:
                 logger.error(
@@ -798,7 +934,9 @@ def create_ticket(app=quart.Quart):
                 # Box-office sales are cash ("bar"); no Stripe intent to refund.
                 "method": str(data.get("method") or ("bar" if paid else "free")),
                 "payment_intent": None,
+                "lang": str(data.get("lang") or "en").lower(),
             }
+            tlang = ticket["lang"]
             print(ticket)
             await asyncio.to_thread(save_tickets, tid, ticket)
 
@@ -811,7 +949,7 @@ def create_ticket(app=quart.Quart):
             event_time = date_info.get("time", "") if valid_date != "Unlimited" else ""
             await asyncio.to_thread(
                 generate_ticket_pdf, tid, first_name, last_name, valid_date,
-                event_time, "simple",
+                event_time, "simple", None, tlang,
             )
         except Exception:
             # Roll back the reserved seats so a mid-flight failure does not
@@ -832,6 +970,7 @@ def create_ticket(app=quart.Quart):
                     paid,
                     date=valid_date,
                     event_time=event_time,
+                    lang=tlang,
                 )
             except Exception as mail_err:
                 logger.error(
@@ -875,7 +1014,8 @@ def build_combined_simple_pdf(tids: List[str]):
             elements.append(PageBreak())
         elements.extend(
             simple_ticket_flowables(
-                tid, first_name, last_name, date, event_time, show_data
+                tid, first_name, last_name, date, event_time, show_data,
+                ticket.get("seat_label") or "", ticket.get("lang") or "en",
             )
         )
         found += 1
@@ -901,6 +1041,8 @@ def generate_ticket_pdf(
     date: str,
     event_time: str,
     variant: str = "standard",
+    seat_label: Optional[str] = None,
+    lang: Optional[str] = None,
 ):
     """
     Generates a printable PDF ticket and saves it to ./codes/{tid}.pdf
@@ -909,10 +1051,26 @@ def generate_ticket_pdf(
     Variants:
       - "standard": Full A4 ticket with banner and detailed info (default)
       - "simple": Minimal A5 ticket for fast printing at the box office
+
+    seat_label / lang: when None they are looked up from the stored ticket, so
+    every PDF path shows the seat and uses the buyer's language.
     """
     pdf_filename = f"./codes/{tid}.pdf"
 
     os.makedirs("./codes", exist_ok=True)
+
+    # Fall back to the stored ticket's seat + language so lazy PDF generation
+    # (e.g. from send_email) still prints the seat and localizes correctly
+    # without every caller passing them.
+    if seat_label is None or lang is None:
+        try:
+            _t = load_ticket_id(tid) or {}
+        except Exception:
+            _t = {}
+        if seat_label is None:
+            seat_label = _t.get("seat_label") or ""
+        if lang is None:
+            lang = _t.get("lang") or "en"
 
     # The QR is drawn straight into the PDF from an in-memory PNG by the
     # flowables below — no standalone .png file is written to disk.
@@ -929,7 +1087,8 @@ def generate_ticket_pdf(
             bottomMargin=SIMPLE_MARGIN,
         )
         elements = simple_ticket_flowables(
-            tid, first_name, last_name, date, event_time, show_data
+            tid, first_name, last_name, date, event_time, show_data,
+            seat_label or "", lang or "en",
         )
 
     else:
@@ -942,7 +1101,8 @@ def generate_ticket_pdf(
             bottomMargin=STD_MARGIN,
         )
         elements = standard_ticket_flowables(
-            tid, first_name, last_name, date, event_time, show_data
+            tid, first_name, last_name, date, event_time, show_data,
+            seat_label or "", lang or "en",
         )
 
     pdf.build(elements)
@@ -962,12 +1122,16 @@ def _ticket_email_html(
     location_address: str,
     tid: str,
     qr_url: str,
+    cancel_url: str = "",
+    seat_label: str = "",
+    lang: str = "en",
 ) -> str:
     """
     Build an email-client-safe, avocloud-branded ticket email (table layout,
     inline styles, no fixed positioning / CSS animations / web fonts).
     All dynamic strings must already be HTML-escaped by the caller.
     """
+    T = _tx(lang)
     def _row(label: str, value: str, last: bool = False) -> str:
         border = "" if last else "border-bottom:1px solid #DCD8CB;"
         return (
@@ -982,19 +1146,30 @@ def _ticket_email_html(
             "</tr>"
         )
 
+    def _seat_pill(v: str) -> str:
+        # Coral rounded pill so the reserved seat pops (matches the web stub).
+        return (
+            '<span style="display:inline-block;padding:4px 12px;border-radius:999px;'
+            "background:#F7E4DF;color:#C73D20;font-family:Arial,Helvetica,sans-serif;"
+            f'font-weight:bold;font-size:14px;">&#127903; {v}</span>'
+        )
+
     info: list = []
     if full_name:
-        info.append(("NAME", full_name))
+        info.append((T["label_NAME"], full_name))
     if date_val:
-        info.append(("DATE", date_val))
+        info.append((T["label_DATE"], date_val))
         if date_val != "Unlimited" and event_time:
-            info.append(("TIME", event_time))
+            info.append((T["label_TIME"], event_time))
+    if seat_label:
+        info.append((T["label_SEAT"], seat_label))
     if location_name:
-        info.append(("LOCATION", location_name))
+        info.append((T["label_LOCATION"], location_name))
     if location_address:
-        info.append(("ADDRESS", location_address))
+        info.append((T["label_ADDRESS"], location_address))
     rows_html = "".join(
-        _row(lbl, val, last=(i == len(info) - 1)) for i, (lbl, val) in enumerate(info)
+        _row(lbl, (_seat_pill(val) if lbl == "SEAT" else val), last=(i == len(info) - 1))
+        for i, (lbl, val) in enumerate(info)
     )
     info_table = (
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
@@ -1008,6 +1183,18 @@ def _ticket_email_html(
         f'<div style="margin-top:6px;font-family:Arial,Helvetica,sans-serif;'
         f'font-size:13px;color:#FFD8CF;">{subtitle}</div>'
         if subtitle
+        else ""
+    )
+
+    # Optional self-service cancellation link (buyer can cancel + get refunded
+    # from the email, up to the deadline enforced server-side).
+    cancel_html = (
+        '<tr><td style="padding:0 36px 24px 36px;">'
+        '<p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12.5px;'
+        f'line-height:1.6;color:#6B6B63;">{T["email_cancel_pre"]}'
+        f'<a href="{cancel_url}" style="color:#C73D20;font-weight:bold;text-decoration:underline;">'
+        f'{T["email_cancel_link"]}</a>{T["email_cancel_post"]}</p></td></tr>'
+        if cancel_url
         else ""
     )
 
@@ -1026,12 +1213,30 @@ def _ticket_email_html(
       <td align="center" style="padding:28px 12px;">
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;background-color:#FFFFFF;border:1px solid #DCD8CB;border-radius:14px;overflow:hidden;">
 
-          <!-- coral header band -->
+          <!-- coral header band (gradient, with solid fallback for Outlook) -->
           <tr>
-            <td style="background-color:#C73D20;padding:34px 36px;">
+            <td style="background-color:#C73D20;background-image:linear-gradient(135deg,#C73D20,#8F2B16);padding:34px 36px;">
               <div style="font-family:'Courier New',Courier,monospace;font-size:12px;font-weight:bold;letter-spacing:3px;color:#FFD8CF;">// TICKET</div>
               <div style="margin-top:8px;font-family:Arial,Helvetica,sans-serif;font-size:28px;font-weight:bold;line-height:1.15;color:#FFFFFF;">{event_name}</div>
               {subtitle_html}
+            </td>
+          </tr>
+
+          <!-- perforation seam: dashed line with two notch "ears" clipped by the
+               card's rounded overflow (the classic ticket-stub cut). -->
+          <tr>
+            <td style="padding:0;line-height:0;font-size:0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                <tr>
+                  <td width="12" style="line-height:0;font-size:0;">
+                    <div style="width:22px;height:22px;margin-left:-11px;border-radius:50%;background-color:#F2EFE6;"></div>
+                  </td>
+                  <td style="border-top:2px dashed #DCD8CB;height:1px;font-size:0;line-height:0;">&nbsp;</td>
+                  <td width="12" style="line-height:0;font-size:0;" align="right">
+                    <div style="width:22px;height:22px;margin-right:-11px;border-radius:50%;background-color:#F2EFE6;"></div>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
 
@@ -1062,15 +1267,17 @@ def _ticket_email_html(
           <tr>
             <td style="padding:22px 36px 8px 36px;">
               <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12.5px;line-height:1.6;color:#6B6B63;">
-                Have this QR code ready at the entrance — it is scanned and validated on entry. Each ticket is valid for a single entry on the date shown above. To re-enter, ask for a stamp or wristband at the exit. Your ticket is also attached as a PDF.
+                {T["email_usage"]}
               </p>
             </td>
           </tr>
 
+          {cancel_html}
+
           <!-- footer -->
           <tr>
             <td style="padding:18px 36px 28px 36px;border-top:1px solid #DCD8CB;">
-              <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#6B6B63;">Managed by QrGate · avocloud.net</div>
+              <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#6B6B63;">{T["footer"]}</div>
             </td>
           </tr>
 
@@ -1091,10 +1298,15 @@ async def send_email(
     date: str,
     event_time: str,
     type: str = "normal",
+    seat_label: Optional[str] = None,
+    lang: Optional[str] = None,
 ):
     """
     Sends an email with the ticket PDF attached.
     Automatically generates the PDF if needed.
+
+    seat_label / lang: when None they are looked up from the stored ticket, so
+    the seat is shown and the email + PDF use the buyer's language.
     """
     if not email:
         return
@@ -1106,10 +1318,25 @@ async def send_email(
         logger.error(f"Refusing to send email to invalid address: {email!r}")
         return
 
-    
+    # Resolve seat + language once: fall back to the stored ticket so both the
+    # PDF and the email body show the seat and localize, whatever the caller passed.
+    if seat_label is None or lang is None:
+        try:
+            _t = load_ticket_id(tid) or {}
+        except Exception:
+            _t = {}
+        if seat_label is None:
+            seat_label = _t.get("seat_label") or ""
+        if lang is None:
+            lang = _t.get("lang") or "en"
+    T = _tx(lang)
+
     pdf_path = f"./codes/{tid}.pdf"
     if not os.path.exists(pdf_path):
-        generate_ticket_pdf(tid, first_name, last_name, date, event_time)
+        generate_ticket_pdf(
+            tid, first_name, last_name, date, event_time,
+            seat_label=seat_label, lang=lang,
+        )
 
     message = MIMEMultipart("mixed")
     message["From"] = config.Mail.smtp_user
@@ -1130,6 +1357,7 @@ async def send_email(
     loc_name, loc_addr = _location_for_date(date, show_data)
     location_name = escape(loc_name) if loc_name else ""
     location_address = escape(loc_addr) if loc_addr else ""
+    seat_label_e = escape(str(seat_label)) if _meaningful(seat_label) else ""
     safe_tid = escape(str(tid))
     # The tid under the QR links to the ticket PDF. The per-ticket HMAC token
     # lets the (otherwise public) /codes/pdf endpoint accept this legitimate
@@ -1138,25 +1366,39 @@ async def send_email(
         f"{config.API.backend_url}/codes/pdf?tid={tid}"
         f"&token={ticket_token(tid)}"
     )
+    # Self-service cancel link → the PHP frontend page, which POSTs to the
+    # token-gated /api/ticket/self-cancel. Only offered for real dated tickets
+    # (a dateless admin/vip ticket has no online cancellation). The public app
+    # domain is admin-configurable (show setting "app_domain"); we fall back to
+    # the env-configured frontend_origin when it isn't set.
+    cancel_url = ""
+    if date and date != "Unlimited":
+        frontend_base = str(
+            show_data.get("app_domain")
+            or getattr(config.API, "frontend_origin", "")
+            or ""
+        ).strip().rstrip("/")
+        if frontend_base and not frontend_base.startswith("*"):
+            # Tolerate an admin entering a bare host ("tickets.example.com"):
+            # a link needs a scheme, so default to https:// when none is given.
+            if not re.match(r"^https?://", frontend_base, re.IGNORECASE):
+                frontend_base = "https://" + frontend_base
+            cancel_url = (
+                f"{frontend_base}/cancel.php?tid={tid}&token={ticket_token(tid)}"
+            )
 
     if type != "normal":
         message["Subject"] = (config.Mail.mail_title_paid).format(id=str(first_name))
-        headline = 'Your ticket has been <span style="color:#C73D20;">paid</span>'
-        status_msg = (
-            "Your ticket was paid for on site — this email confirms the payment. "
-            "Your ticket below (and the attached PDF) is ready for entry."
-        )
+        headline = T["email_head_paid"]
+        status_msg = T["email_status_paid_onsite"]
     else:
         message["Subject"] = (config.Mail.mail_title).format(id=str(first_name))
         if paid:
-            headline = 'Your ticket is <span style="color:#C73D20;">ready</span>'
-            status_msg = "Your ticket is paid and ready to use."
+            headline = T["email_head_ready"]
+            status_msg = T["email_status_ready"]
         else:
-            headline = 'Your <span style="color:#C73D20;">ticket</span>'
-            status_msg = (
-                "Your ticket has not been paid yet, so it can't be used. "
-                "Please pay at the entrance on the day of the event to activate it."
-            )
+            headline = T["email_head_ticket"]
+            status_msg = T["email_status_unpaid"]
 
     html_content = _ticket_email_html(
         event_name=event_name,
@@ -1170,6 +1412,9 @@ async def send_email(
         location_address=location_address,
         tid=safe_tid,
         qr_url=qr_url,
+        cancel_url=cancel_url,
+        seat_label=seat_label_e,
+        lang=lang,
     )
 
     # Embed the QR as an inline (cid) image instead of a remote <img src> URL.
@@ -1272,11 +1517,12 @@ def edit_ticket(app=quart.Quart):
                 await send_email(
                     first_name,
                     last_name,
-                    ticket.get("email"), 
+                    ticket.get("email"),
                     tid,
                     paid,
                     date=valid_date,
-                    event_time=date["time"], 
+                    event_time=date["time"],
+                    lang=ticket.get("lang") or "en",
                 )
             return quart.jsonify({"status": "success", "message": "Ticket edited"}), 200
         except Exception as e:
@@ -1390,6 +1636,125 @@ def _stripe_refund(payment_intent: str) -> Dict[str, Any]:
         return {"ok": False, "error": str(e)}
 
 
+# Self-service cancellation is only allowed up to this many hours before the
+# event starts. After that, only an admin can cancel (at the box office).
+CANCEL_DEADLINE_HOURS = 24
+
+
+def _self_cancel_deadline_ok(valid_date: str, event_time: str, now) -> bool:
+    """True if `now` is at least CANCEL_DEADLINE_HOURS before the event start
+    (valid_date + event_time). A missing/unknown time is treated as 00:00 of the
+    event day. Returns False for unparseable/dateless tickets (self-cancel then
+    simply isn't offered)."""
+    from datetime import datetime, timedelta
+
+    try:
+        y, m, d = (int(x) for x in str(valid_date).split("-"))
+    except Exception:
+        return False
+    hh, mm = 0, 0
+    tm = re.match(r"\s*(\d{1,2}):(\d{2})", str(event_time or ""))
+    if tm:
+        hh, mm = int(tm.group(1)), int(tm.group(2))
+    try:
+        event_start = datetime(y, m, d, hh, mm, tzinfo=getattr(now, "tzinfo", None))
+    except Exception:
+        return False
+    return now <= event_start - timedelta(hours=CANCEL_DEADLINE_HOURS)
+
+
+async def _do_cancel(tid: str, actor: str, reason: str):
+    """Shared cancellation core used by BOTH the admin endpoint and the
+    self-service link: idempotent active->cancelled flip, seat/availability
+    release, stats reversal, Stripe refund and an audit entry. Returns
+    (payload_dict, http_status). The caller is responsible for authorization."""
+    ticket = await asyncio.to_thread(load_ticket_id, tid)
+    if ticket is None:
+        return {"status": "error", "message": "Ticket not found"}, 200
+
+    # Idempotency guard: the active -> cancelled flip is the single source of
+    # truth. If we don't win it, the ticket was already cancelled, so do NOT
+    # release a seat / refund again.
+    won = await asyncio.to_thread(mark_ticket_cancelled, tid)
+    if not won:
+        return {"status": "error", "message": "Ticket already cancelled"}, 200
+
+    valid_date = ticket.get("valid_date")
+    t_type = str(ticket.get("type") or "")
+    seat_released = False
+    # Only dated visitor seats consume capacity; admin/vip/Unlimited don't.
+    if valid_date and valid_date != "Unlimited" and t_type not in ("admin", "vip"):
+        date_info = await asyncio.to_thread(load_date, valid_date)
+        if date_info:
+            if date_info.get("seating"):
+                # Reserved seating: free the exact seat(s) bound to this ticket
+                # instead of bumping a numeric counter.
+                await asyncio.to_thread(release_seats_for_ticket, valid_date, tid)
+            else:
+                await asyncio.to_thread(increment_availability, valid_date, 1)
+            seat_released = True
+            # A sale is logged at creation for every dated seat (paid or not),
+            # so reverse the stats whenever we release that seat.
+            try:
+                price = float(date_info.get("price") or 0)
+                await asyncio.to_thread(log_ticket_refund, 1, price)
+            except Exception as se:
+                logger.error(f"Stat reversal failed for {tid}: {se}")
+
+    # Stripe refund (only for Stripe-paid tickets). Stripe itself rejects a
+    # second full refund of the same intent, so even a racing call is safe.
+    refund_id = None
+    refund_error = None
+    method = str(ticket.get("method") or "")
+    payment_intent = ticket.get("payment_intent") or await asyncio.to_thread(
+        get_intent_for_ticket, tid
+    )
+    if method == "stripe" or payment_intent:
+        if payment_intent:
+            res = await asyncio.to_thread(_stripe_refund, payment_intent)
+            if res.get("ok"):
+                refund_id = res.get("refund_id")
+                await asyncio.to_thread(set_ticket_refund, tid, refund_id or "")
+            else:
+                refund_error = res.get("error")
+                logger.error(f"Stripe refund failed for {tid}: {refund_error}")
+        else:
+            refund_error = "No payment_intent on record"
+
+    # Audit trail entry (free-form access_attempts list).
+    await asyncio.to_thread(
+        append_access_attempt,
+        tid,
+        {
+            "type": "cancelled",
+            "status": "cancelled",
+            "time": local_now().isoformat(),
+            "scanner": actor,
+            "reason": reason,
+            "refund_id": refund_id,
+        },
+    )
+
+    msg = "Ticket cancelled."
+    if seat_released:
+        msg += " Seat released."
+    if refund_id:
+        msg += f" Refunded ({refund_id})."
+    elif refund_error:
+        msg += f" Refund FAILED: {refund_error} — refund manually in Stripe."
+
+    return (
+        {
+            "status": "success",
+            "message": msg,
+            "seat_released": seat_released,
+            "refund_id": refund_id,
+            "refund_error": refund_error,
+        },
+        200,
+    )
+
+
 def cancel_ticket(app=quart.Quart):
     @app.route("/api/ticket/cancel", methods=["POST"])   # type: ignore
     async def cancel_ticket_route():
@@ -1402,101 +1767,135 @@ def cancel_ticket(app=quart.Quart):
             actor = str(data.get("scanner") or data.get("actor") or "admin").strip()
             if not tid:
                 return quart.jsonify({"status": "error", "message": "Missing tid"}), 200
+            payload, status = await _do_cancel(tid, actor, reason)
+            return quart.jsonify(payload), status
+        except Exception as e:
+            logger.error(f"cancel_ticket error: {e}")
+            return quart.jsonify({"status": "error", "message": str(e)}), 500
+
+    @app.route("/api/ticket/self-cancel", methods=["POST"])   # type: ignore
+    async def self_cancel_route():
+        """Buyer-facing cancellation from the email link. Authorized NOT by the
+        shared admin key but by the ticket's per-ticket HMAC token (see
+        ticket_token), and only allowed up to CANCEL_DEADLINE_HOURS before the
+        event. On success it runs the exact same refund/seat-release path as the
+        admin cancel."""
+        try:
+            data: dict = await quart.request.get_json(silent=True) or {}
+            tid = str(data.get("tid") or "").strip().upper()
+            token = str(data.get("token") or "").strip()
+            reason = str(data.get("reason") or "").strip() or "self-service"
+            if not tid:
+                return quart.jsonify({"status": "error", "message": "Missing tid"}), 400
+            # Timing-safe per-ticket token check (tids are low-entropy; the token
+            # is what actually authorizes this public request).
+            if not _token_valid(tid, token):
+                return quart.jsonify({"status": "error", "message": "Forbidden"}), 403
+
+            ticket = await asyncio.to_thread(load_ticket_id, tid)
+            if ticket is None:
+                return quart.jsonify({"status": "error", "message": "Ticket not found"}), 200
+            if str(ticket.get("status") or "active") == "cancelled":
+                return (
+                    quart.jsonify({"status": "error", "message": "Ticket already cancelled"}),
+                    200,
+                )
+
+            valid_date = str(ticket.get("valid_date") or "")
+            t_type = str(ticket.get("type") or "")
+            # Dateless admin/vip tickets can't be self-cancelled.
+            if not valid_date or valid_date == "Unlimited" or t_type in ("admin", "vip"):
+                return (
+                    quart.jsonify(
+                        {"status": "error", "message": "This ticket can't be cancelled online."}
+                    ),
+                    200,
+                )
+
+            date_info = await asyncio.to_thread(load_date, valid_date)
+            event_time = (date_info or {}).get("time", "")
+            if not _self_cancel_deadline_ok(valid_date, event_time, local_now()):
+                return (
+                    quart.jsonify(
+                        {
+                            "status": "error",
+                            "message": (
+                                "The cancellation deadline has passed "
+                                f"({CANCEL_DEADLINE_HOURS}h before the event)."
+                            ),
+                            "code": "deadline_passed",
+                        }
+                    ),
+                    200,
+                )
+
+            payload, status = await _do_cancel(tid, "self-service", reason)
+            return quart.jsonify(payload), status
+        except Exception as e:
+            logger.error(f"self_cancel error: {e}")
+            return quart.jsonify({"status": "error", "message": str(e)}), 500
+
+    @app.route("/api/ticket/self-cancel/preview", methods=["POST"])   # type: ignore
+    async def self_cancel_preview_route():
+        """Read-only summary for the self-service cancel page: enough to render a
+        ticket card (event, seat, date) and decide which state to show, WITHOUT
+        cancelling anything. Same per-ticket HMAC token authorization as the
+        cancel route; returns only the buyer's own non-sensitive fields."""
+        try:
+            data: dict = await quart.request.get_json(silent=True) or {}
+            tid = str(data.get("tid") or "").strip().upper()
+            token = str(data.get("token") or "").strip()
+            if not tid:
+                return quart.jsonify({"status": "error", "message": "Missing tid"}), 400
+            if not _token_valid(tid, token):
+                return quart.jsonify({"status": "error", "message": "Forbidden"}), 403
 
             ticket = await asyncio.to_thread(load_ticket_id, tid)
             if ticket is None:
                 return quart.jsonify({"status": "error", "message": "Ticket not found"}), 200
 
-            # Idempotency guard: the active -> cancelled flip is the single source
-            # of truth. If we don't win it, the ticket was already cancelled, so
-            # do NOT release a seat / refund again.
-            won = await asyncio.to_thread(mark_ticket_cancelled, tid)
-            if not won:
-                return (
-                    quart.jsonify(
-                        {"status": "error", "message": "Ticket already cancelled"}
-                    ),
-                    200,
-                )
-
-            valid_date = ticket.get("valid_date")
+            valid_date = str(ticket.get("valid_date") or "")
             t_type = str(ticket.get("type") or "")
-            seat_released = False
-            # Only dated visitor seats consume capacity; admin/vip/Unlimited don't.
-            if valid_date and valid_date != "Unlimited" and t_type not in ("admin", "vip"):
+            cancelled = str(ticket.get("status") or "active") == "cancelled"
+            dateless = (
+                not valid_date or valid_date == "Unlimited" or t_type in ("admin", "vip")
+            )
+
+            show_data = await asyncio.to_thread(load_show)
+            event_time = ""
+            deadline_ok = False
+            if not dateless:
                 date_info = await asyncio.to_thread(load_date, valid_date)
-                if date_info:
-                    if date_info.get("seating"):
-                        # Reserved seating: free the exact seat(s) bound to this
-                        # ticket instead of bumping a numeric counter.
-                        await asyncio.to_thread(release_seats_for_ticket, valid_date, tid)
-                    else:
-                        await asyncio.to_thread(increment_availability, valid_date, 1)
-                    seat_released = True
-                    # A sale is logged at creation for every dated seat (paid or
-                    # not), so reverse the stats whenever we release that seat.
-                    try:
-                        price = float(date_info.get("price") or 0)
-                        await asyncio.to_thread(log_ticket_refund, 1, price)
-                    except Exception as se:
-                        logger.error(f"Stat reversal failed for {tid}: {se}")
+                event_time = (date_info or {}).get("time", "") or ""
+                deadline_ok = _self_cancel_deadline_ok(valid_date, event_time, local_now())
+            loc_name, _ = _location_for_date(valid_date, show_data)
 
-            # Stripe refund (only for Stripe-paid tickets). Stripe itself rejects a
-            # second full refund of the same intent, so even a racing call is safe.
-            refund_id = None
-            refund_error = None
-            method = str(ticket.get("method") or "")
-            payment_intent = ticket.get("payment_intent") or await asyncio.to_thread(
-                get_intent_for_ticket, tid
-            )
-            if method == "stripe" or payment_intent:
-                if payment_intent:
-                    res = await asyncio.to_thread(_stripe_refund, payment_intent)
-                    if res.get("ok"):
-                        refund_id = res.get("refund_id")
-                        await asyncio.to_thread(set_ticket_refund, tid, refund_id or "")
-                    else:
-                        refund_error = res.get("error")
-                        logger.error(f"Stripe refund failed for {tid}: {refund_error}")
-                else:
-                    refund_error = "No payment_intent on record"
-
-            # Audit trail entry (free-form access_attempts list).
-            await asyncio.to_thread(
-                append_access_attempt,
-                tid,
-                {
-                    "type": "cancelled",
-                    "status": "cancelled",
-                    "time": local_now().isoformat(),
-                    "scanner": actor,
-                    "reason": reason,
-                    "refund_id": refund_id,
-                },
-            )
-
-            msg = "Ticket cancelled."
-            if seat_released:
-                msg += " Seat released."
-            if refund_id:
-                msg += f" Refunded ({refund_id})."
-            elif refund_error:
-                msg += f" Refund FAILED: {refund_error} — refund manually in Stripe."
-
+            cancellable = (not cancelled) and (not dateless) and deadline_ok
             return (
                 quart.jsonify(
                     {
                         "status": "success",
-                        "message": msg,
-                        "seat_released": seat_released,
-                        "refund_id": refund_id,
-                        "refund_error": refund_error,
+                        "data": {
+                            "tid": tid,
+                            "first_name": ticket.get("first_name") or "",
+                            "seat_label": ticket.get("seat_label") or "",
+                            "valid_date": valid_date,
+                            "event_time": event_time,
+                            "location": loc_name or "",
+                            "event_name": show_data.get("orga_name") or "",
+                            "used": bool(ticket.get("used_at")),
+                            "cancelled": cancelled,
+                            "dateless": dateless,
+                            "deadline_passed": (not dateless) and (not deadline_ok),
+                            "cancellable": cancellable,
+                            "deadline_hours": CANCEL_DEADLINE_HOURS,
+                        },
                     }
                 ),
                 200,
             )
         except Exception as e:
-            logger.error(f"cancel_ticket error: {e}")
+            logger.error(f"self_cancel_preview error: {e}")
             return quart.jsonify({"status": "error", "message": str(e)}), 500
 
 
