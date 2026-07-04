@@ -1,6 +1,8 @@
 import os
 import json
 import hmac
+import time
+import secrets
 import sqlite3
 import quart
 import config.conf as config
@@ -95,6 +97,7 @@ def init_db() -> None:
                 tickets_available INTEGER,
                 price             TEXT,
                 location          TEXT,              -- location id this day belongs to
+                seating           INTEGER DEFAULT 0, -- 1 = reserved seating (seat map)
                 position          INTEGER            -- preserve insertion order
             );
 
@@ -123,6 +126,29 @@ def init_db() -> None:
                 amount            REAL,              -- amount consumed
                 used_at           TEXT               -- when it was recorded
             );
+
+            -- One saved room/hall layout per location. `layout` and
+            -- `categories` are opaque JSON produced by the admin seat-map
+            -- editor. Seats live inside layout.elements (type="seat") and
+            -- carry a stable `id`, `row`, `number` and `category_id`.
+            CREATE TABLE IF NOT EXISTS seatmaps (
+                location_id TEXT PRIMARY KEY,
+                layout      TEXT DEFAULT '{}',   -- JSON: {elements:[...]}
+                categories  TEXT DEFAULT '[]',   -- JSON: [{id,name,color,price}]
+                updated_at  TEXT
+            );
+
+            -- Per-date seat occupancy. A missing row means the seat is FREE.
+            -- status: 'held' (checkout reservation with TTL) | 'sold'.
+            CREATE TABLE IF NOT EXISTS seat_status (
+                date_key     TEXT NOT NULL,   -- the date string (valid_date)
+                seat_id      TEXT NOT NULL,
+                status       TEXT NOT NULL,   -- held | sold
+                tid          TEXT,            -- ticket once sold
+                hold_token   TEXT,            -- checkout hold owner
+                hold_expires TEXT,            -- ISO ts; held rows past this are free
+                PRIMARY KEY (date_key, seat_id)
+            );
             """
         )
         conn.commit()
@@ -143,6 +169,9 @@ def _migrate_ticket_columns() -> None:
         "payment_intent": "TEXT",            # Stripe intent backing this ticket
         "refund_id": "TEXT",                 # Stripe refund id once refunded
         "method": "TEXT",                    # stripe | bar | ... (payment method)
+        "seat_id": "TEXT",                   # reserved-seating: bound seat id
+        "seat_label": "TEXT",                # human seat label e.g. "Row B · 12"
+        "location": "TEXT",                  # location id snapshot (seated dates)
     }
     conn = get_db()
     try:
@@ -156,14 +185,19 @@ def _migrate_ticket_columns() -> None:
 
 
 def _migrate_date_columns() -> None:
-    """Idempotently add the `location` column to an existing dates table.
+    """Idempotently add newer columns to an existing dates table.
     CREATE TABLE IF NOT EXISTS never adds columns to a pre-existing table, so we
-    ALTER only when it is missing (guarded by PRAGMA table_info)."""
+    ALTER only the ones missing (guarded by PRAGMA table_info)."""
+    wanted = {
+        "location": "TEXT",
+        "seating": "INTEGER DEFAULT 0",   # 1 = reserved seating (seat map)
+    }
     conn = get_db()
     try:
         existing = {r["name"] for r in conn.execute("PRAGMA table_info(dates)").fetchall()}
-        if "location" not in existing:
-            conn.execute("ALTER TABLE dates ADD COLUMN location TEXT")
+        for col, decl in wanted.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE dates ADD COLUMN {col} {decl}")
         conn.commit()
     finally:
         conn.close()
@@ -302,6 +336,7 @@ def load_show() -> Dict[str, Any]:
             "tickets_available": d["tickets_available"],
             "price": d["price"],
             "location": d["location"],
+            "seating": bool(d["seating"]) if d["seating"] is not None else False,
         }
     show["dates"] = dates
 
@@ -392,8 +427,8 @@ def save_show(data: dict) -> None:
                     """
                     INSERT INTO dates (
                         date_key, date, time, tickets, tickets_available,
-                        price, location, position
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        price, location, seating, position
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(date_key),
@@ -403,6 +438,7 @@ def save_show(data: dict) -> None:
                         value.get("tickets_available"),
                         value.get("price"),
                         value.get("location"),
+                        1 if value.get("seating") else 0,
                         position,
                     ),
                 )
@@ -434,6 +470,7 @@ def load_date(date: str):
         "tickets_available": d["tickets_available"],
         "price": d["price"],
         "location": d["location"],
+        "seating": bool(d["seating"]) if d["seating"] is not None else False,
     }
     print("Found show:", result)
     return result
@@ -871,3 +908,248 @@ def img_show(app=quart.Quart):
         if safe_path is None or not os.path.isfile(safe_path):
             return quart.jsonify({"status": "error", "message": "Image not found"}), 404
         return await quart.send_file(safe_path)
+
+
+# --------------------------------------------------------------------------- #
+# RESERVED SEATING
+#
+# One layout per location (`seatmaps`), plus per-date occupancy (`seat_status`).
+# A seat is FREE when it has no seat_status row (or only an expired hold). The
+# hold/bind operations run in one IMMEDIATE transaction so two buyers can never
+# claim the same seat.
+# --------------------------------------------------------------------------- #
+
+def load_seatmap(location_id: str) -> Dict[str, Any]:
+    """Return {"layout": {...}, "categories": [...]} for a location.
+    Empty scaffold if none saved yet."""
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT layout, categories FROM seatmaps WHERE location_id = ?",
+            (location_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        return {"layout": {"elements": []}, "categories": []}
+    try:
+        layout = json.loads(row["layout"]) if row["layout"] else {"elements": []}
+    except (ValueError, TypeError):
+        layout = {"elements": []}
+    try:
+        categories = json.loads(row["categories"]) if row["categories"] else []
+    except (ValueError, TypeError):
+        categories = []
+    if not isinstance(layout, dict):
+        layout = {"elements": []}
+    layout.setdefault("elements", [])
+    return {"layout": layout, "categories": categories}
+
+
+def save_seatmap(location_id: str, layout: dict, categories: list) -> None:
+    """Upsert the layout + categories JSON for a location."""
+    if not location_id:
+        raise ValueError("save_seatmap requires a location_id")
+    layout = layout if isinstance(layout, dict) else {"elements": []}
+    layout.setdefault("elements", [])
+    categories = categories if isinstance(categories, list) else []
+    from assets.timeutil import local_now
+    conn = get_db()
+    try:
+        conn.execute(
+            """
+            INSERT INTO seatmaps (location_id, layout, categories, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(location_id) DO UPDATE SET
+                layout=excluded.layout,
+                categories=excluded.categories,
+                updated_at=excluded.updated_at
+            """,
+            (
+                location_id,
+                json.dumps(layout, ensure_ascii=False),
+                json.dumps(categories, ensure_ascii=False),
+                local_now().isoformat(),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def seat_elements(layout: dict) -> list:
+    """All seat-type elements from a layout dict."""
+    if not isinstance(layout, dict):
+        return []
+    return [
+        e for e in layout.get("elements", [])
+        if isinstance(e, dict) and e.get("type") == "seat" and e.get("id")
+    ]
+
+
+def seat_index(location_id: str) -> Dict[str, Dict[str, Any]]:
+    """Map seat_id -> {row, number, category_id, label} for a location's map."""
+    sm = load_seatmap(location_id)
+    idx: Dict[str, Dict[str, Any]] = {}
+    for s in seat_elements(sm["layout"]):
+        row = s.get("row")
+        number = s.get("number")
+        if row and number:
+            label = f"{row} · {number}"
+        elif row:
+            label = str(row)
+        else:
+            label = str(number) if number else str(s["id"])
+        idx[str(s["id"])] = {
+            "row": row,
+            "number": number,
+            "category_id": s.get("category_id"),
+            "label": label,
+        }
+    return idx
+
+
+def location_capacity(location_id: str) -> int:
+    """Total seat count in a location's saved map (= capacity for seated dates)."""
+    return len(seat_elements(load_seatmap(location_id)["layout"]))
+
+
+def _sweep_expired_holds(conn: sqlite3.Connection, date_key: str) -> None:
+    """Delete held rows whose TTL has passed (they are free again)."""
+    conn.execute(
+        "DELETE FROM seat_status WHERE date_key = ? AND status = 'held' "
+        "AND hold_expires IS NOT NULL AND CAST(hold_expires AS REAL) < ?",
+        (date_key, time.time()),
+    )
+
+
+def seat_occupancy(date_key: str) -> Dict[str, str]:
+    """seat_id -> 'sold' | 'held' for a date (after expiring stale holds).
+    Seats not present are free."""
+    conn = get_db()
+    try:
+        _sweep_expired_holds(conn, date_key)
+        conn.commit()
+        rows = conn.execute(
+            "SELECT seat_id, status FROM seat_status WHERE date_key = ?",
+            (date_key,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return {r["seat_id"]: r["status"] for r in rows}
+
+
+def hold_seats(date_key: str, seat_ids: list, ttl_seconds: int):
+    """Atomically place a checkout hold on `seat_ids` for a date.
+    Returns (ok: bool, token: str|None, taken: list[str]). If any requested
+    seat is already sold or actively held, nothing is held and it is listed
+    in `taken`."""
+    seat_ids = [str(s) for s in seat_ids if s]
+    if not seat_ids:
+        return False, None, []
+    token = secrets.token_hex(16)
+    expires = time.time() + max(30, int(ttl_seconds))
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        _sweep_expired_holds(conn, date_key)
+        placeholders = ",".join("?" * len(seat_ids))
+        taken_rows = conn.execute(
+            f"SELECT seat_id FROM seat_status WHERE date_key = ? "
+            f"AND seat_id IN ({placeholders})",
+            (date_key, *seat_ids),
+        ).fetchall()
+        taken = [r["seat_id"] for r in taken_rows]
+        if taken:
+            conn.rollback()
+            return False, None, taken
+        for sid in seat_ids:
+            conn.execute(
+                "INSERT INTO seat_status (date_key, seat_id, status, hold_token, "
+                "hold_expires) VALUES (?, ?, 'held', ?, ?)",
+                (date_key, sid, token, str(expires)),
+            )
+        conn.commit()
+        return True, token, []
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def release_hold(date_key: str, hold_token: str) -> int:
+    """Drop all still-held (not sold) seats owned by `hold_token`. Returns the
+    number of seats freed."""
+    if not hold_token:
+        return 0
+    conn = get_db()
+    try:
+        cur = conn.execute(
+            "DELETE FROM seat_status WHERE date_key = ? AND hold_token = ? "
+            "AND status = 'held'",
+            (date_key, hold_token),
+        )
+        conn.commit()
+        return cur.rowcount or 0
+    finally:
+        conn.close()
+
+
+def bind_seats(date_key: str, mapping: Dict[str, str], hold_token: Optional[str] = None):
+    """Atomically mark seats as sold. `mapping` is seat_id -> tid. Succeeds only
+    if none of the seats is already sold (a stale/expired hold or matching hold
+    token is re-claimed). Returns (ok: bool, taken: list[str])."""
+    seat_ids = [str(s) for s in mapping.keys() if s]
+    if not seat_ids:
+        return True, []
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        _sweep_expired_holds(conn, date_key)
+        placeholders = ",".join("?" * len(seat_ids))
+        rows = conn.execute(
+            f"SELECT seat_id, status, hold_token FROM seat_status "
+            f"WHERE date_key = ? AND seat_id IN ({placeholders})",
+            (date_key, *seat_ids),
+        ).fetchall()
+        taken = []
+        for r in rows:
+            # A seat already sold, or actively held by a DIFFERENT checkout,
+            # cannot be claimed by this order.
+            if r["status"] == "sold":
+                taken.append(r["seat_id"])
+            elif r["status"] == "held" and hold_token and r["hold_token"] != hold_token:
+                taken.append(r["seat_id"])
+        if taken:
+            conn.rollback()
+            return False, taken
+        for sid, tid in mapping.items():
+            conn.execute(
+                "INSERT INTO seat_status (date_key, seat_id, status, tid, "
+                "hold_token, hold_expires) VALUES (?, ?, 'sold', ?, NULL, NULL) "
+                "ON CONFLICT(date_key, seat_id) DO UPDATE SET "
+                "status='sold', tid=excluded.tid, hold_token=NULL, hold_expires=NULL",
+                (date_key, str(sid), str(tid)),
+            )
+        conn.commit()
+        return True, []
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def release_seats_for_ticket(date_key: str, tid: str) -> int:
+    """Free the seat(s) bound to a ticket (used on cancellation)."""
+    conn = get_db()
+    try:
+        cur = conn.execute(
+            "DELETE FROM seat_status WHERE date_key = ? AND tid = ?",
+            (date_key, tid),
+        )
+        conn.commit()
+        return cur.rowcount or 0
+    finally:
+        conn.close()

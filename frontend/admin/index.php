@@ -800,6 +800,14 @@ HTML;
                                             <td><input type="text" class="input location-address"
                                                     value="<?php echo htmlspecialchars($loc["address"] ?? ""); ?>"></td>
                                             <td>
+                                                <a class="btn-icon-outline" href="seatmap.php?loc=<?php echo urlencode($locId); ?>"
+                                                    title="Edit this location's seat map" style="display:inline-flex;vertical-align:middle;"><svg
+                                                        xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                        stroke-linejoin="round" class="lucide lucide-layout-grid">
+                                                        <rect width="7" height="7" x="3" y="3" rx="1" /><rect width="7" height="7" x="14" y="3" rx="1" />
+                                                        <rect width="7" height="7" x="14" y="14" rx="1" /><rect width="7" height="7" x="3" y="14" rx="1" />
+                                                    </svg></a>
                                                 <button class="btn-icon-outline" type="button" action-type="update-location"
                                                     data-location-id="<?php echo htmlspecialchars($locId); ?>"><svg
                                                         xmlns="http://www.w3.org/2000/svg" width="24" height="24"
@@ -867,6 +875,13 @@ HTML;
                             </select>
                         </div>
 
+                        <div class="grid gap-3">
+                            <label class="label" style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+                                <input type="checkbox" id="newSeating"> Reserved seating (choose seats from the room map)
+                            </label>
+                            <a href="seatmap.php" class="avo-link" style="font-size:.8rem;">Open seat map editor ↗</a>
+                        </div>
+
                         <div style="margin-top: 1rem;">
                             <button type="submit" class="btn-outline"><svg xmlns="http://www.w3.org/2000/svg" width="24"
                                     height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -910,6 +925,7 @@ HTML;
                                     <th>Available</th>
                                     <th>Price</th>
                                     <th>Location</th>
+                                    <th>Seating</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -945,6 +961,16 @@ HTML;
                                                         <?php endforeach;
                                                     endif; ?>
                                                 </select>
+                                            </td>
+                                            <td style="text-align:center; white-space:nowrap;">
+                                                <input type="checkbox" class="day-seating" title="Reserved seating — uses this day's location seat map"
+                                                    <?php echo !empty($dateData["seating"]) ? "checked" : ""; ?>>
+                                                <?php if (!empty($dateData["location"])): ?>
+                                                    <a href="seatmap.php?loc=<?php echo urlencode($dateData["location"]); ?>" class="avo-link"
+                                                        title="Edit the seat map of this day's location" style="font-size:.75rem; margin-left:.4rem;">map ↗</a>
+                                                <?php else: ?>
+                                                    <span class="avo-muted" title="Assign a location first" style="font-size:.7rem; margin-left:.4rem;">no loc</span>
+                                                <?php endif; ?>
                                             </td>
                                             <td>
                                                 <button class="btn-icon-outline" type="submit" action-type="update-day"
@@ -1731,7 +1757,8 @@ HTML;
                 time: document.getElementById('newTime').value,
                 tickets: document.getElementById('newTickets').value,
                 price: document.getElementById('newPrice').value,
-                location: document.getElementById('newLocation') ? document.getElementById('newLocation').value : ''
+                location: document.getElementById('newLocation') ? document.getElementById('newLocation').value : '',
+                seating: document.getElementById('newSeating') ? document.getElementById('newSeating').checked : false
             };
             fetch('api.php?action=add_day', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN }, body: JSON.stringify(data) })
                 .then(r => r.json())
@@ -1879,6 +1906,7 @@ HTML;
                 }
 
                 const locationSelect = row.querySelector('select.day-location');
+                const seatingInput = row.querySelector('.day-seating');
                 const updateData = {
                     dateId: dateId,
                     date: dateInput,
@@ -1886,7 +1914,8 @@ HTML;
                     tickets: ticketsInput,
                     available: availableInput,
                     price: priceInput.toFixed(2),
-                    location: locationSelect ? locationSelect.value : ''
+                    location: locationSelect ? locationSelect.value : '',
+                    seating: seatingInput ? seatingInput.checked : false
                 };
 
                 fetch('api.php?action=update_day', {

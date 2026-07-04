@@ -108,9 +108,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $matchedPrice = null;
+        $matchedSeating = false;
         foreach ($show['dates'] as $dateData) {
             if (($dateData['date'] ?? null) === $ticketData['valid_date']) {
                 $matchedPrice = (float)$dateData['price'];
+                $matchedSeating = !empty($dateData['seating']);
                 break;
             }
         }
@@ -121,6 +123,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Override the (untrusted) submitted price with the authoritative one.
         $ticketData['price'] = $matchedPrice;
+
+        // Order total drives the Stripe amount check below. For general
+        // admission it's price × tickets; for reserved seating it's the
+        // authoritative sum of the chosen seats' category prices.
+        $orderTotal = $ticketData['price'] * $ticketData['tickets'];
+
+        if ($matchedSeating) {
+            $seats = qrgate_sanitize_seats($_POST['seats'] ?? null);
+            $holdToken = trim($_POST['hold_token'] ?? '');
+            if (!$seats || $holdToken === '') {
+                throw new Exception('Please select your seats again.');
+            }
+            if (count($seats) !== $ticketData['tickets']) {
+                throw new Exception('Seat selection mismatch. Please try again.');
+            }
+            $sum = qrgate_seat_order_total($ticketData['valid_date'], $seats);
+            if (!$sum['ok']) {
+                throw new Exception('Some of your seats are no longer available. Please pick again.');
+            }
+            $orderTotal = $sum['total'];
+            // Record a per-ticket price so backend income stats stay ~accurate.
+            $ticketData['price'] = $ticketData['tickets'] > 0
+                ? round($orderTotal / $ticketData['tickets'], 2) : 0;
+            $ticketData['seats'] = $seats;
+            $ticketData['hold_token'] = $holdToken;
+        }
 
         if ($ticketData['method'] === 'bar') {
             // Rate-limit unpaid cash bookings: they create real tickets and send
@@ -219,8 +247,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('Payment has not been completed. Please try again.');
             }
 
-            // Verify amount matches expected (price per ticket × number of tickets, in cents)
-            $expectedCents = (int)round($ticketData['price'] * $ticketData['tickets'] * 100);
+            // Verify amount matches expected order total (seat sum for reserved
+            // seating, price × tickets otherwise), in cents.
+            $expectedCents = (int)round($orderTotal * 100);
             if (($intent['amount_received'] ?? 0) !== $expectedCents) {
                 throw new Exception('Payment amount mismatch. Please contact the organizer.');
             }

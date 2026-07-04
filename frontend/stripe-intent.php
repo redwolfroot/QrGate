@@ -15,16 +15,35 @@ if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
     exit;
 }
 
-$pricePerTicket = floatval($_POST['price'] ?? 0);
 $tickets = intval($_POST['tickets'] ?? 1);
+$validDate = $_POST['date'] ?? '';
+$seated = !empty($_POST['seated']);
 
-if ($pricePerTicket <= 0 || $tickets < 1) {
-    http_response_code(400);
-    echo json_encode(['error' => 'Invalid price or ticket count']);
-    exit;
+if ($seated) {
+    // Reserved seating: the amount is the authoritative sum of the chosen
+    // seats' prices — never trust a client-supplied price here.
+    $seats = qrgate_sanitize_seats($_POST['seats'] ?? null);
+    if (!$seats || $validDate === '') {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid seat selection']);
+        exit;
+    }
+    $sum = qrgate_seat_order_total($validDate, $seats);
+    if (!$sum['ok'] || $sum['total'] <= 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Seats unavailable. Please pick again.']);
+        exit;
+    }
+    $amountCents = (int)round($sum['total'] * 100);
+} else {
+    $pricePerTicket = floatval($_POST['price'] ?? 0);
+    if ($pricePerTicket <= 0 || $tickets < 1) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid price or ticket count']);
+        exit;
+    }
+    $amountCents = (int)round($pricePerTicket * $tickets * 100);
 }
-
-$amountCents = (int)round($pricePerTicket * $tickets * 100);
 
 $stripeConfig = makeApiCall('/api/show/get/stripe');
 

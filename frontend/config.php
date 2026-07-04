@@ -199,6 +199,66 @@ function updateShow($data)
 }
 
 /**
+ * Reserved-seating helpers. Availability is the authoritative source for which
+ * seats exist, their per-seat price (category price or the date's base price)
+ * and their live status. Never trust a client-supplied seat price.
+ */
+function qrgate_seat_availability($validDate)
+{
+    return makeApiCall('/api/seatmap/availability?date=' . urlencode($validDate));
+}
+
+/**
+ * Authoritative total for a seated order. Returns
+ * ['ok'=>bool, 'total'=>float, 'count'=>int, 'error'=>string].
+ */
+function qrgate_seat_order_total($validDate, array $seatIds)
+{
+    $av = qrgate_seat_availability($validDate);
+    if (!is_array($av) || ($av['status'] ?? '') !== 'success' || empty($av['seating'])) {
+        return ['ok' => false, 'error' => 'not_seated'];
+    }
+    $base = (float)($av['base_price'] ?? 0);
+    $priceById = [];
+    $statusById = [];
+    foreach (($av['elements'] ?? []) as $el) {
+        if (($el['type'] ?? '') === 'seat' && isset($el['id'])) {
+            $priceById[(string)$el['id']] = isset($el['price']) ? (float)$el['price'] : $base;
+            $statusById[(string)$el['id']] = $el['status'] ?? 'free';
+        }
+    }
+    $total = 0.0;
+    foreach ($seatIds as $sid) {
+        $sid = (string)$sid;
+        if (!isset($priceById[$sid])) {
+            return ['ok' => false, 'error' => 'unknown_seat'];
+        }
+        if (($statusById[$sid] ?? 'free') === 'sold') {
+            return ['ok' => false, 'error' => 'seat_sold'];
+        }
+        $total += $priceById[$sid];
+    }
+    return ['ok' => true, 'total' => round($total, 2), 'count' => count($seatIds)];
+}
+
+/**
+ * Validate + normalize a client-submitted seats payload into a flat list of
+ * bounded strings, or return null if it is malformed.
+ */
+function qrgate_sanitize_seats($raw)
+{
+    if (!is_array($raw)) return null;
+    $out = [];
+    foreach ($raw as $s) {
+        if (!is_string($s) && !is_numeric($s)) return null;
+        $s = mb_substr(trim((string)$s), 0, 100);
+        if ($s === '') return null;
+        $out[] = $s;
+    }
+    return $out;
+}
+
+/**
  * First-run setup guard.
  *
  * Returns true once the backend reports the wizard as completed. The "installed"

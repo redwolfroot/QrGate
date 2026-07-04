@@ -396,7 +396,8 @@ function addDay() {
         'tickets' => (int)$input['tickets'],
         'tickets_available' => (int)$input['tickets'],
         'price' => (string)$input['price'],
-        'location' => isset($input['location']) ? (string)$input['location'] : ''
+        'location' => isset($input['location']) ? (string)$input['location'] : '',
+        'seating' => !empty($input['seating'])
     ];
 
     
@@ -446,7 +447,10 @@ function updateDay() {
         'price' => (string)$input['price'],
         'location' => isset($input['location'])
             ? (string)$input['location']
-            : (string)($shows['dates'][$input['dateId']]['location'] ?? '')
+            : (string)($shows['dates'][$input['dateId']]['location'] ?? ''),
+        'seating' => isset($input['seating'])
+            ? (bool)$input['seating']
+            : (bool)($shows['dates'][$input['dateId']]['seating'] ?? false)
     ];
 
     

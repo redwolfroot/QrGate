@@ -204,29 +204,98 @@ HTML;
             background-color: rgba(0, 0, 0, 0.7) !important;
         }
 
+        /* ---- Full-screen booking experience -------------------------------- */
+        /* Base .dialog transitions ALL props (allow-discrete); animating width
+           froze the modal. Fade opacity only, size is static. */
+        #bookingModal { transition-property: opacity, overlay, display !important; }
+        #bookingModal.dialog {
+            width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh;
+            margin: 0; border: 0; border-radius: 0; padding: 0;
+            background: var(--avo-bg, #0b0b0b); color: var(--avo-text, #eee);
+            overflow: hidden;
+        }
+        #bookingModal::backdrop { background: rgba(0, 0, 0, .85) !important; }
+        /* Basecoat caps .dialog children at ~32rem; our shell must span the screen. */
+        #bookingModal .booking-shell { max-width: none !important; width: 100% !important; }
+
+        /* Two-column layout: fixed sidebar (summary + steps) + main content. */
+        .booking-shell { display: flex; flex-direction: row; height: 100%; width: 100%; overflow: hidden; }
+        .booking-side {
+            flex: 0 0 320px; display: flex; flex-direction: column; gap: 1.25rem;
+            padding: clamp(1.25rem, 2vw, 2rem);
+            border-right: 1px solid var(--avo-border);
+            background: color-mix(in oklab, var(--avo-surface) 60%, transparent);
+            overflow-y: auto;
+        }
+        .booking-side-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+        .booking-close {
+            flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+            width: 2.25rem; height: 2.25rem; border-radius: 8px; color: var(--avo-text);
+            border: 1px solid var(--avo-border); background: var(--avo-card);
+            cursor: pointer; transition: opacity .15s;
+        }
+        .booking-close:hover { opacity: .7; }
+        .step-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .25rem; }
+        .step-item {
+            display: flex; align-items: center; gap: .75rem;
+            padding: .7rem .75rem; border-radius: 10px; color: var(--avo-text-muted);
+            font-size: .95rem; transition: background .15s, color .15s;
+        }
+        .step-item .step-num {
+            flex: 0 0 auto; width: 1.75rem; height: 1.75rem; border-radius: 50%;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: .85rem; font-weight: 700;
+            border: 1px solid var(--avo-border); background: var(--avo-card);
+        }
+        .step-item.active { color: var(--avo-text); background: color-mix(in oklab, var(--avo-primary) 14%, transparent); }
+        .step-item.active .step-num { background: var(--avo-primary); color: #fff; border-color: var(--avo-primary); }
+        .step-item.done { color: var(--avo-text); }
+        .step-item.done .step-num { background: color-mix(in oklab, var(--avo-primary) 30%, transparent); border-color: var(--avo-primary); }
+
+        .booking-main { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+        .booking-main > section { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+        #bookingForm { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 0; padding: 0; }
+        .wizard-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: clamp(1.25rem, 3vw, 2.5rem) clamp(1rem, 4vw, 3rem);
+            display: flex; flex-direction: column; align-items: center; }
+        /* margin:auto centres short steps but yields to the top when content is
+           taller than the viewport, so nothing gets clipped/unreachable. */
+        .wizard-step { width: 100%; max-width: 480px; margin-inline: auto; margin-block: auto; }
+        .wizard-step[data-step="2"] { max-width: 1180px; margin-block: 0; }
+        .wizard-heading { font-size: 1.35rem; font-weight: 700; margin-bottom: .35rem; }
+        .wizard-sub { color: var(--avo-text-muted); font-size: .95rem; margin-bottom: 1.25rem; }
+        .wizard-nav { flex: 0 0 auto; border-top: 1px solid var(--avo-border); padding: 1rem clamp(1rem, 4vw, 3rem); }
+        .wizard-nav .booking-inner { display: flex; gap: .75rem; width: 100%; max-width: 620px; margin: 0 auto; }
+
+        /* Stack on narrow screens: sidebar becomes a compact top bar. */
+        @media (max-width: 820px) {
+            .booking-shell { flex-direction: column; }
+            /* Ultra-slim single-row top bar: progress dots + close. Everything
+               else (title, help, date card) is collapsed; date/step moves into
+               the step content via #mobileStepBar. */
+            .booking-side { flex: 0 0 auto; flex-direction: row; align-items: center; border-right: 0; border-bottom: 1px solid var(--avo-border); overflow: visible; gap: .5rem; padding: .5rem .8rem; }
+            .booking-side-head { order: 2; margin-left: auto; align-items: center; }
+            .booking-side-head > div { display: none; }          /* title + help */
+            #dialogContext { display: none !important; }
+            .booking-close { width: 2rem; height: 2rem; }
+            /* Step list becomes connected progress dots. */
+            .step-list { order: 1; flex: 0 1 auto; flex-direction: row; align-items: center; gap: 0; }
+            .step-item { padding: 0; gap: 0; }
+            .step-item .step-name { display: none !important; }
+            .step-item.active .step-name { display: none !important; }
+            .step-item .step-num { width: 1.35rem; height: 1.35rem; font-size: .72rem; }
+            .step-item:not(:last-child)::after { content: ""; width: 1.1rem; height: 2px; background: var(--avo-border); margin: 0 .18rem; display: block; }
+            .step-item.done::after { background: var(--avo-primary); }
+            .booking-mobile-only { display: flex !important; }
+            .booking-main { height: auto; flex: 1 1 auto; min-height: 0; }
+        }
+
         @media (max-width: 640px) {
-            #bookingModal {
-                width: auto !important;
-                max-width: 90vw !important;
-                max-height: 90vh !important;
-                min-height: 50vh !important;
-                background-color: var(--card-background) !important;
-                color: var(--text-color) !important;
-                border: 1px solid var(--border-color) !important;
-                border-radius: 8px !important;
-                padding: 0 !important;
-                z-index: 1000 !important;
-                margin: auto !important;
-            }
-
-            #bookingModal>div {
-                max-height: calc(80vh - 4rem);
-                overflow-y: auto;
-                width: 100%;
-            }
-
-            #bookingModal>button {
-                display: none;
+            #bookingModal.dialog {
+                width: 100vw !important; max-width: 100vw !important;
+                height: 100dvh !important; max-height: 100dvh !important;
+                min-height: 100dvh !important;
+                border: 0 !important; border-radius: 0 !important;
+                margin: 0 !important; padding: 0 !important; z-index: 1000 !important;
             }
         }
     </style>
@@ -403,18 +472,24 @@ HTML;
     </style>
     <dialog id="bookingModal" class="dialog w-full sm:max-w-[425px]" aria-labelledby="demo-dialog-edit-profile-title"
         onclick="if (event.target === this) this.close()">
-        <div class="max-h-[80vh] overflow-y-auto p-6">
-            <header class="mb-4">
-                <h2 id="demo-dialog-edit-profile-title" class="text-xl font-bold">
-                    <?php echo $languages[$current_language]['buy_tickets']; ?>
-                </h2>
-                <p class="animate-pulse demo-dialog-edit-profile-description text-sm mt-1">
-                    <i class="fa-solid fa-circle-question"></i>
-                    <a href="./help/buy_ticket.php" class="avo-link" target="_blank">
-                        <span><?php echo $languages[$current_language]['need_help']; ?></span>
-                    </a>
-                </p>
-            </header>
+        <div class="booking-shell">
+          <aside class="booking-side">
+            <div class="booking-side-head">
+                <div>
+                    <h2 id="demo-dialog-edit-profile-title" class="text-lg font-bold">
+                        <?php echo $languages[$current_language]['buy_tickets']; ?>
+                    </h2>
+                    <p class="demo-dialog-edit-profile-description text-sm mt-1">
+                        <i class="fa-solid fa-circle-question"></i>
+                        <a href="./help/buy_ticket.php" class="avo-link" target="_blank">
+                            <span><?php echo $languages[$current_language]['need_help']; ?></span>
+                        </a>
+                    </p>
+                </div>
+                <button type="button" aria-label="Close dialog" onclick="this.closest('dialog').close()" class="booking-close">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
             <!-- Persistent context: which date/location is being booked (visible on every step) -->
             <div id="dialogContext" class="hidden grid gap-1 mb-4 p-3"
                  style="border:1px solid var(--avo-border);border-radius:12px;background-color:var(--avo-surface);">
@@ -434,7 +509,15 @@ HTML;
                     <span id="dialogLocation"></span>
                 </div>
             </div>
-            <section>
+            <ol class="step-list">
+                <li class="step-item" data-stepitem="1"><span class="step-num">1</span><span class="step-name"><?php echo $languages[$current_language]['step1_title']; ?></span></li>
+                <li class="step-item" data-stepitem="2"><span class="step-num">2</span><span class="step-name"><?php echo $languages[$current_language]['step2_title']; ?></span></li>
+                <li class="step-item" data-stepitem="3"><span class="step-num">3</span><span class="step-name"><?php echo $languages[$current_language]['step3_title']; ?></span></li>
+                <li class="step-item" data-stepitem="4"><span class="step-num">4</span><span class="step-name"><?php echo $languages[$current_language]['step4_title']; ?></span></li>
+            </ol>
+          </aside>
+          <main class="booking-main">
+          <section>
                 <form class="form grid gap-4" id="bookingForm" action="buy.php" method="POST">
                     <?php echo csrfField(); ?>
                     <!-- Honeypot: hidden from real users; bots that fill it are rejected. -->
@@ -446,6 +529,8 @@ HTML;
                     <input type="hidden" name="price" id="ticketPrice">
                     <input type="hidden" name="payment_intent_id" id="paymentIntentId">
                     <input type="hidden" name="payment_method" id="paymentMethodInput" value="">
+                    <input type="hidden" name="hold_token" id="holdToken" value="">
+                    <div id="seatsHidden"></div>
                     <?php
                     $L = $languages[$current_language];
                     $contactEmail = $shows['contact_email'] ?? '';
@@ -455,22 +540,18 @@ HTML;
                     $stornoContact = str_replace('{contact}', $contactDisplay, htmlspecialchars($L['storno_contact']));
                     ?>
 
-                    <!-- Step indicator -->
-                    <div class="grid gap-2">
-                        <div class="flex items-center justify-between">
-                            <span id="wizardStepTitle" class="font-semibold text-sm"></span>
-                            <span id="wizardStepCount" class="text-xs" style="color:var(--avo-text-muted);"></span>
-                        </div>
-                        <div class="flex gap-1.5">
-                            <span class="wizard-dot" data-dot="1"></span>
-                            <span class="wizard-dot" data-dot="2"></span>
-                            <span class="wizard-dot" data-dot="3"></span>
-                            <span class="wizard-dot" data-dot="4"></span>
-                        </div>
+                    <div class="wizard-body">
+                    <!-- Mobile-only: step + date/location (sidebar chrome is collapsed to dots there) -->
+                    <div id="mobileStepBar" class="booking-mobile-only" style="width:100%;max-width:1180px;margin:0 auto .75rem;display:none;flex-wrap:wrap;align-items:baseline;gap:.15rem .6rem;">
+                        <span id="mobileStepLabel" style="font-size:1.05rem;font-weight:700;color:var(--avo-text);"></span>
+                        <span id="mobileStepDate" style="font-size:.82rem;color:var(--avo-text-muted);"></span>
                     </div>
-
                     <!-- STEP 1 — personal details -->
                     <div class="wizard-step grid gap-4" data-step="1">
+                        <div>
+                            <div class="wizard-heading"><?php echo $L['step1_title']; ?></div>
+                            <div class="wizard-sub"><?php echo $current_language === 'de' ? 'Wir brauchen diese Angaben für Ihre Tickets.' : 'We need these details for your tickets.'; ?></div>
+                        </div>
                         <div class="grid gap-2">
                             <label for="first_name"><?php echo $L['first_name']; ?></label>
                             <input type="text" name="first_name" id="first_name" placeholder="Max" autocomplete="given-name" required autofocus aria-describedby="first_name_err">
@@ -488,9 +569,9 @@ HTML;
                         </div>
                     </div>
 
-                    <!-- STEP 2 — tickets -->
+                    <!-- STEP 2 — tickets / seats -->
                     <div class="wizard-step hidden grid gap-4" data-step="2">
-                        <div class="grid gap-2">
+                        <div id="gaTicketWrap" class="grid gap-2">
                             <label for="tickets"><?php echo $L['number_of_tickets']; ?></label>
                             <select name="tickets" id="tickets" required>
                                 <?php for ($i = 1; $i <= 10; $i++) { ?>
@@ -500,12 +581,51 @@ HTML;
                                 <?php } ?>
                             </select>
                         </div>
+
+                        <!-- Reserved-seating picker (shown only for seated dates) -->
+                        <div id="seatPickerWrap" class="hidden grid gap-2">
+
+                            <!-- PHASE 1 — how many seats (before touching the map) -->
+                            <div id="seatCountPhase" class="grid gap-4" style="max-width:22rem;margin:0 auto;text-align:center;">
+                                <div class="text-lg font-semibold" style="color:var(--avo-text);"><?php echo $current_language === 'de' ? 'Wie viele Plätze möchten Sie?' : 'How many seats do you want?'; ?></div>
+                                <div class="flex items-center justify-center gap-4">
+                                    <button type="button" id="seatWantMinus" class="btn-secondary" style="padding:.4rem 1.1rem;line-height:1;font-size:1.6rem;" aria-label="−">−</button>
+                                    <span id="seatWantVal" class="font-bold" style="min-width:2.5rem;text-align:center;font-size:2rem;color:var(--avo-text);">1</span>
+                                    <button type="button" id="seatWantPlus" class="btn-secondary" style="padding:.4rem 1.1rem;line-height:1;font-size:1.6rem;" aria-label="+">+</button>
+                                </div>
+                                <!-- Names for the extra tickets, filled here (not hidden below the map) -->
+                                <div id="seatNameFields" class="grid gap-3" style="text-align:left;"></div>
+                                <button type="button" id="seatCountNext" class="btn" style="width:100%;min-height:52px;font-size:1.05rem;"><?php echo $current_language === 'de' ? 'Plätze auf Karte auswählen' : 'Choose seats on the map'; ?></button>
+                                <button type="button" id="seatAutoPick" class="btn-secondary" style="width:100%;"><?php echo $current_language === 'de' ? 'Beste Plätze automatisch wählen' : 'Pick best seats automatically'; ?></button>
+                            </div>
+
+                            <!-- PHASE 2 — the map itself -->
+                            <div id="seatMapPhase" class="hidden grid gap-2">
+                                <div class="flex items-center justify-between flex-wrap gap-2">
+                                    <div class="text-base font-medium" style="color:var(--avo-text);"><span id="seatWantEcho">1</span> <?php echo $current_language === 'de' ? 'Plätze – tippen Sie in den Saal' : 'seats – tap in the hall'; ?></div>
+                                    <button type="button" id="seatCountBack" class="btn-secondary" style="padding:.3rem .9rem;line-height:1;"><?php echo $current_language === 'de' ? 'Anzahl ändern' : 'Change amount'; ?></button>
+                                </div>
+                                <div id="seatOrphanHint" class="hidden text-sm p-2" style="color:#b45309;background:color-mix(in oklab,#f59e0b 15%,transparent);border-radius:8px;"></div>
+                                <div id="seatLegend" class="flex flex-wrap gap-x-4 gap-y-1 text-xs" style="color:var(--avo-text-muted);"></div>
+                                <div class="flex items-center gap-2 text-sm" style="color:var(--avo-text-muted);">
+                                    <button type="button" id="seatZoomOut" class="btn-secondary" style="padding:.3rem .8rem;line-height:1;font-size:1.2rem;" aria-label="Zoom out">−</button>
+                                    <button type="button" id="seatZoomIn" class="btn-secondary" style="padding:.3rem .8rem;line-height:1;font-size:1.2rem;" aria-label="Zoom in">+</button>
+                                    <button type="button" id="seatZoomFit" class="btn-secondary" style="padding:.3rem .9rem;line-height:1;" aria-label="Fit"><?php echo $current_language === 'de' ? 'Ganzer Saal' : 'Whole hall'; ?></button>
+                                </div>
+                                <div id="seatMapScroll" style="overflow:auto;max-height:min(68vh,860px);border:1px solid var(--avo-border);border-radius:10px;background:var(--avo-surface);touch-action:none;">
+                                    <svg id="seatSvg" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;height:auto;min-height:200px;"></svg>
+                                </div>
+                                <div id="seatSelInfo" class="text-base font-semibold" style="color:var(--avo-text);"></div>
+                                <div id="seatHoldTimer" class="text-xs hidden" style="color:var(--avo-primary);font-weight:600;"></div>
+                            </div>
+                        </div>
+
                         <div id="nameFieldsContainer" class="grid gap-3"></div>
                     </div>
 
                     <!-- STEP 3 — payment method -->
                     <div class="wizard-step hidden grid gap-3" data-step="3" role="group" aria-label="<?php echo htmlspecialchars($L['choose_payment']); ?>">
-                        <div class="font-semibold text-sm"><?php echo $L['choose_payment']; ?></div>
+                        <div class="wizard-heading"><?php echo $L['choose_payment']; ?></div>
                         <div id="paymentMethodSelection" class="grid gap-3">
                             <button type="button" id="cashButton" class="btn-secondary payment-method-btn"
                                 onclick="pickMethod('bar')" data-method="cash"
@@ -587,27 +707,21 @@ HTML;
                         </div>
                     </div>
 
+                    </div><!-- /.wizard-body -->
+
                     <!-- Wizard navigation -->
-                    <div class="flex gap-3 mt-1">
+                    <div class="wizard-nav"><div class="booking-inner">
                         <button type="button" id="wizardBack" class="btn-secondary flex-1 hidden" onclick="wizardGoBack()">
                             <?php echo $L['back']; ?>
                         </button>
                         <button type="button" id="wizardNext" class="btn-primary flex-1" onclick="wizardGoNext()">
                             <?php echo $L['next']; ?>
                         </button>
-                    </div>
+                    </div></div>
                 </form>
             </section>
+          </main>
         </div>
-        <button type="button" aria-label="Close dialog" onclick="this.closest('dialog').close()"
-            class="absolute top-4 right-4 avo-muted hover:opacity-70 transition-opacity">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                class="lucide lucide-x">
-                <path d="M18 6 6 18" />
-                <path d="m6 6 12 12" />
-            </svg>
-        </button>
     </dialog>
     <?php if ($shows === null): ?>
         <div class="min-h-screen flex items-center justify-center p-4">
@@ -832,7 +946,7 @@ HTML;
                                                 $jsDisp = htmlspecialchars(addslashes($dDisp), ENT_QUOTES);
                                                 $jsLoc  = htmlspecialchars(addslashes($locName), ENT_QUOTES);
                                                 ?>
-                                                onclick="showBookingForm('<?php echo $id; ?>', '<?php echo $show['date']; ?>', '<?php echo $show['price']; ?>', '<?php echo $show['tickets_available']; ?>', '<?php echo $jsDisp; ?>', '<?php echo $jsLoc; ?>')"
+                                                onclick="showBookingForm('<?php echo $id; ?>', '<?php echo $show['date']; ?>', '<?php echo $show['price']; ?>', '<?php echo $show['tickets_available']; ?>', '<?php echo $jsDisp; ?>', '<?php echo $jsLoc; ?>', <?php echo !empty($show['seating']) ? '1' : '0'; ?>)"
                                                     class="btn-primary"
                                                     aria-label="<?php echo $languages[$current_language]['buy_tickets']; ?> - <?php $date = new DateTime($show['date']); echo $date->format('d.m.Y'); ?>">
                                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
@@ -878,9 +992,16 @@ HTML;
                     modal.close();
                     modal.classList.remove('modal-exit');
                     document.body.style.overflow = 'auto';
+                    releaseSeatHold();
                     resetWizard();
                     if (lastFocusedElement) lastFocusedElement.focus();
                 }
+                // Runs for every close path (X button, Esc, backdrop) — not just closeModal().
+                document.getElementById('bookingModal').addEventListener('close', () => {
+                    stopSeatPoll();
+                    releaseSeatHold();
+                    document.body.style.overflow = 'auto';
+                });
 
                 // ---- Multi-step booking wizard --------------------------------
                 let wizardStep = 1;
@@ -911,37 +1032,57 @@ HTML;
                     document.querySelectorAll('.wizard-step').forEach(el => {
                         el.classList.toggle('hidden', parseInt(el.dataset.step, 10) !== n);
                     });
-                    document.querySelectorAll('.wizard-dot').forEach(d => {
-                        const i = parseInt(d.dataset.dot, 10);
+                    let stepTitle = '';
+                    document.querySelectorAll('.step-item').forEach(d => {
+                        const i = parseInt(d.dataset.stepitem, 10);
                         d.classList.toggle('active', i === n);
                         d.classList.toggle('done', i < n);
+                        if (i === n) { const nm = d.querySelector('.step-name'); stepTitle = nm ? nm.textContent.trim() : ''; }
                     });
-                    document.getElementById('wizardStepTitle').innerHTML = WIZARD_TITLES[n] || '';
-                    document.getElementById('wizardStepCount').textContent = STEP_OF_TPL.replace('{n}', n);
+                    const mLabel = document.getElementById('mobileStepLabel');
+                    if (mLabel) mLabel.textContent = '<?php echo $current_language === "de" ? "Schritt" : "Step"; ?> ' + n + (stepTitle ? ' · ' + stepTitle : '');
                     document.getElementById('wizardBack').classList.toggle('hidden', n === 1);
                     // Next is hidden on step 3 (advance by picking a method) and step 4 (pay/book live there).
                     document.getElementById('wizardNext').classList.toggle('hidden', n === 3 || n === 4);
                     const stepEl = document.querySelector('.wizard-step[data-step="' + n + '"]');
                     const firstInput = stepEl && stepEl.querySelector('input:not([type=hidden]), select');
                     if (firstInput && n !== 3) setTimeout(() => { try { firstInput.focus(); } catch (e) {} }, 60);
+                    // Step 2 is two-phase: count first, map second. Keep the map open
+                    // if seats are already picked (e.g. returning from step 3).
+                    if (n === 2 && window.isSeated) {
+                        if (selectedSeats.length) showSeatMapPhase(); else showSeatCountPhase();
+                        startSeatPoll();
+                    } else {
+                        stopSeatPoll();
+                    }
                 }
 
                 // NOTE: do not name these wizardNext/wizardBack — those ids exist on
                 // the buttons inside the <form>, and an inline onclick resolves that
                 // name to the form's control (the button element), shadowing the
                 // function and making the click a no-op. Distinct names avoid the clash.
-                function wizardGoNext() {
+                async function wizardGoNext() {
                     if (wizardStep === 1) {
                         if (!validateStep1()) return;
                         goToStep(2);
                     } else if (wizardStep === 2) {
                         if (!validateStep2()) return;
+                        // Seats are soft-held on selection; make sure the hold matches
+                        // the final selection before moving on.
+                        if (window.isSeated) {
+                            clearTimeout(syncTimer);
+                            const nextBtn = document.getElementById('wizardNext');
+                            nextBtn.disabled = true;
+                            await syncHold();
+                            nextBtn.disabled = false;
+                            if (!holdActive) return;   // a seat was taken — stay & re-pick
+                        }
                         goToStep(3);
                         maybeAutoMethod();
                     }
                 }
 
-                function wizardGoBack() {
+                async function wizardGoBack() {
                     if (wizardStep === 4) {
                         // Leaving confirm — clear payment-specific state so re-picking is clean.
                         document.getElementById('cashConfirmButton').classList.add('hidden');
@@ -955,7 +1096,25 @@ HTML;
                         goToStep(3);
                         return;
                     }
+                    // Going back to the seat picker: drop the hold FIRST (await!), then
+                    // reload availability — otherwise the reload sees the buyer's own
+                    // seats still held and renders them as taken/unclickable.
+                    if (wizardStep === 3 && window.isSeated) {
+                        const keep = selectedSeats.map(s => s.id);
+                        await releaseSeatHold();
+                        await loadSeatAvailability(document.getElementById('validDate').value);
+                        reselectSeats(keep);
+                    }
                     if (wizardStep > 1) goToStep(wizardStep - 1);
+                }
+
+                // Re-apply a previous selection after an availability reload so the
+                // buyer keeps their seats when they step back to edit them.
+                function reselectSeats(ids) {
+                    (ids || []).forEach(id => {
+                        const g = document.querySelector('.seat-node[data-seat="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+                        if (g && g.getAttribute('data-sold') !== '1') toggleSeat(g);
+                    });
                 }
 
                 // The notice differs by payment method: cash is a reservation paid on
@@ -1027,9 +1186,11 @@ HTML;
                     const fn = document.querySelector('input[name="first_name"]').value.trim();
                     const ln = document.querySelector('input[name="last_name"]').value.trim();
                     const email = document.querySelector('input[name="email"]').value.trim();
-                    const tickets = parseInt(document.querySelector('select[name="tickets"]').value, 10) || 1;
+                    const tickets = window.isSeated
+                        ? selectedSeats.length
+                        : (parseInt(document.querySelector('select[name="tickets"]').value, 10) || 1);
                     const price = parseFloat(document.getElementById('ticketPrice').value) || 0;
-                    const total = (price * tickets).toFixed(2);
+                    const total = window.isSeated ? seatTotal().toFixed(2) : (price * tickets).toFixed(2);
                     const methodLabel = method === 'bar'
                         ? '<?php echo addslashes($L['cash_payment']); ?>'
                         : '<?php echo addslashes($L['online_payment']); ?>';
@@ -1043,6 +1204,9 @@ HTML;
                     ];
                     if (selectedLocation) {
                         rows.push(['<?php echo addslashes($L['location_label']); ?>', selectedLocation]);
+                    }
+                    if (window.isSeated && selectedSeats.length) {
+                        rows.push(['<?php echo addslashes($current_language === "de" ? "Sitzplätze" : "Seats"); ?>', selectedSeats.map(s => s.label).join(', ')]);
                     }
                     rows.push(['<?php echo addslashes($L['total']); ?>', total + ' €']);
                     document.getElementById('orderSummary').innerHTML = rows.map(r =>
@@ -1091,9 +1255,13 @@ HTML;
 
                 function validateStep2() {
                     const msg = wizardMessages();
-                    const tickets = document.querySelector('select[name="tickets"]').value;
                     const errors = [];
-                    if (!tickets || tickets < 1) errors.push(msg.tickets);
+                    if (window.isSeated) {
+                        if (selectedSeats.length < 1) errors.push('<?php echo addslashes($current_language === "de" ? "Bitte wählen Sie mindestens einen Sitzplatz." : "Please select at least one seat."); ?>');
+                    } else {
+                        const tickets = document.querySelector('select[name="tickets"]').value;
+                        if (!tickets || tickets < 1) errors.push(msg.tickets);
+                    }
                     for (const input of document.querySelectorAll('input[name="add_people[]"]')) {
                         if (!input.value.trim()) { errors.push(msg.missingAdditionalName); break; }
                     }
@@ -1215,8 +1383,15 @@ HTML;
                     const csrfToken = document.querySelector('input[name="csrf_token"]').value;
                     const formData = new FormData();
                     formData.append('csrf_token', csrfToken);
-                    formData.append('price', pricePerTicket);
                     formData.append('tickets', tickets);
+                    if (window.isSeated) {
+                        // Amount is computed server-side from the selected seats.
+                        formData.append('seated', '1');
+                        formData.append('date', document.getElementById('validDate').value);
+                        selectedSeats.forEach(s => formData.append('seats[]', s.id));
+                    } else {
+                        formData.append('price', pricePerTicket);
+                    }
 
                     let intentData;
                     try {
@@ -1382,13 +1557,682 @@ HTML;
                 let selectedDateDisplay = '';
                 let selectedLocation = '';
 
-                function showBookingForm(showId, date, price, ticketsAvailable, dateDisplay, location) {
+                // ---- Reserved seating -----------------------------------------
+                const SEAT_R = 12;
+                const SEAT_MAX = 10;
+                window.isSeated = false;
+                let seatAvail = null;          // last availability response
+                let selectedSeats = [];        // [{id,label,price}] in selection order
+                let holdActive = false;
+                let holdTimerId = null;
+
+                function csrfValue() {
+                    return document.querySelector('#bookingForm input[name="csrf_token"]').value;
+                }
+
+                async function loadSeatAvailability(date) {
+                    const svg = document.getElementById('seatSvg');
+                    svg.innerHTML = '<text x="10" y="24" fill="#888" font-size="13">Loading seats…</text>';
+                    try {
+                        const r = await fetch('seat-proxy.php?action=availability&date=' + encodeURIComponent(date));
+                        seatAvail = await r.json();
+                    } catch (e) { seatAvail = null; }
+                    selectedSeats = [];
+                    setSeatWant(1);
+                    showSeatCountPhase();
+                    document.getElementById('seatOrphanHint')?.classList.add('hidden');
+                    if (!seatAvail || seatAvail.status !== 'success' || !seatAvail.seating) {
+                        svg.innerHTML = '<text x="10" y="24" fill="#e00" font-size="13">Seat map unavailable.</text>';
+                        return;
+                    }
+                    renderSeatMap(seatAvail);
+                    updateSeatDerived();
+                }
+
+                function renderSeatMap(data) {
+                    const els = data.elements || [];
+                    const cats = {};
+                    (data.categories || []).forEach(c => { cats[String(c.id)] = c; });
+                    // Bounding box.
+                    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                    els.forEach(e => {
+                        if (e.type === 'seat') {
+                            minX = Math.min(minX, e.x - SEAT_R); minY = Math.min(minY, e.y - SEAT_R);
+                            maxX = Math.max(maxX, e.x + SEAT_R); maxY = Math.max(maxY, e.y + SEAT_R);
+                        } else {
+                            const w = e.w || 40, h = e.h || 40;
+                            minX = Math.min(minX, e.x); minY = Math.min(minY, e.y);
+                            maxX = Math.max(maxX, e.x + w); maxY = Math.max(maxY, e.y + h);
+                        }
+                    });
+                    if (!isFinite(minX)) { minX = 0; minY = 0; maxX = 200; maxY = 120; }
+                    const pad = 24;
+                    const vbW = (maxX - minX) + pad * 2, vbH = (maxY - minY) + pad * 2;
+                    const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+                    let out = '';
+                    els.forEach(e => {
+                        if (e.type === 'seat') return; // seats drawn on top below
+                        const w = e.w || 40, h = e.h || 40;
+                        const rot = e.rotation ? ` transform="rotate(${e.rotation} ${e.x + w / 2} ${e.y + h / 2})"` : '';
+                        if (e.type === 'table') {
+                            out += `<ellipse cx="${e.x + w / 2}" cy="${e.y + h / 2}" rx="${w / 2}" ry="${h / 2}" fill="#8b5cf6" opacity="0.5"${rot}/>`;
+                        } else if (e.type === 'label') {
+                            out += `<text x="${e.x}" y="${e.y + 14}" fill="var(--avo-text,#ccc)" font-size="14"${rot}>${esc(e.text || '')}</text>`;
+                        } else {
+                            const fill = e.type === 'stage' ? '#6b7280' : e.type === 'screen' ? '#0ea5e9' : e.type === 'wall' ? '#52525b' : '#6b7280';
+                            const lbl = e.type === 'stage' ? 'STAGE' : e.type === 'screen' ? 'SCREEN' : '';
+                            out += `<rect x="${e.x}" y="${e.y}" width="${w}" height="${h}" rx="4" fill="${fill}" opacity="0.55"${rot}/>`;
+                            if (lbl) out += `<text x="${e.x + w / 2}" y="${e.y + h / 2 + 4}" fill="#fff" font-size="11" text-anchor="middle"${rot}>${lbl}</text>`;
+                        }
+                    });
+                    els.forEach(e => {
+                        if (e.type !== 'seat') return;
+                        const cat = e.category_id != null ? cats[String(e.category_id)] : null;
+                        const baseFill = cat ? cat.color : '#3b82f6';
+                        const sold = e.status === 'sold' || e.status === 'held';
+                        const fill = sold ? '#6b7280' : baseFill;
+                        const label = ((e.row || '') + (e.number != null ? e.number : '')) || '';
+                        out += `<g class="seat-node" data-seat="${esc(e.id)}" data-price="${e.price || 0}" data-label="${esc(label)}" data-sold="${sold ? 1 : 0}" style="cursor:${sold ? 'not-allowed' : 'pointer'}">`;
+                        out += `<circle cx="${e.x}" cy="${e.y}" r="${SEAT_R}" fill="${fill}" data-basefill="${fill}" fill-opacity="${sold ? 0.4 : 1}" stroke="#0008" stroke-width="1"/>`;
+                        if (label) out += `<text x="${e.x}" y="${e.y + 3}" fill="#fff" font-size="9" text-anchor="middle" pointer-events="none">${esc(label)}</text>`;
+                        out += `</g>`;
+                    });
+                    const svg = document.getElementById('seatSvg');
+                    svg.setAttribute('viewBox', `${minX - pad} ${minY - pad} ${vbW} ${vbH}`);
+                    svg.innerHTML = out;
+                    seatMapVB = { w: vbW, h: vbH };
+                    initSeatZoomControls();
+                    initSeatAuto();
+                    resetSeatZoom();
+                    svg.querySelectorAll('.seat-node').forEach(g => {
+                        if (g.getAttribute('data-sold') === '1') return;
+                        g.addEventListener('click', () => { if (!seatPanMoved) onSeatClick(g); });
+                    });
+                    renderLegend(data);
+                }
+
+                // ---- seat-map zoom & pan (native scroll for pan, px sizing for zoom) ----
+                let seatMapVB = { w: 200, h: 120 };
+                let seatZoom = 1;
+                let seatPanMoved = false;
+                function applySeatZoom() {
+                    const svg = document.getElementById('seatSvg');
+                    svg.style.maxWidth = 'none';
+                    svg.style.width = (seatMapVB.w * seatZoom) + 'px';
+                    svg.style.height = (seatMapVB.h * seatZoom) + 'px';
+                    svg.style.minHeight = '0';
+                }
+                // "Whole hall" — fit every column into view (rows may scroll).
+                function fitSeatZoom() {
+                    const box = document.getElementById('seatMapScroll');
+                    const cw = (box && box.clientWidth) ? box.clientWidth - 2 : 360;
+                    seatZoom = Math.max(0.25, Math.min(1.6, cw / seatMapVB.w));
+                    applySeatZoom();
+                }
+                // Default view: fit the whole hall. On desktop fit width AND height
+                // so the entire map is visible with no scrolling; on mobile fit the
+                // width (rows may scroll). Users can still zoom in manually.
+                function resetSeatZoom() {
+                    const box = document.getElementById('seatMapScroll');
+                    const cw = (box && box.clientWidth) ? box.clientWidth - 2 : 360;
+                    const fitW = cw / seatMapVB.w;
+                    if (window.innerWidth > 820) {
+                        // Apply width-fit first so the box reflows to its (clamped)
+                        // height budget, then shrink to also fit vertically if needed.
+                        seatZoom = Math.max(0.1, fitW);
+                        applySeatZoom();
+                        const ch = (box && box.clientHeight) ? box.clientHeight - 2 : 480;
+                        seatZoom = Math.max(0.1, Math.min(fitW, ch / seatMapVB.h));
+                    } else {
+                        seatZoom = Math.max(0.1, fitW);
+                    }
+                    applySeatZoom();
+                }
+                function zoomSeatBy(factor, cx, cy) {
+                    const box = document.getElementById('seatMapScroll');
+                    const prev = seatZoom;
+                    seatZoom = Math.max(0.25, Math.min(4, seatZoom * factor));
+                    if (seatZoom === prev) return;
+                    // Keep the point under the cursor stable while zooming.
+                    const rect = box.getBoundingClientRect();
+                    const ox = (cx == null ? rect.width / 2 : cx - rect.left) + box.scrollLeft;
+                    const oy = (cy == null ? rect.height / 2 : cy - rect.top) + box.scrollTop;
+                    const ratio = seatZoom / prev;
+                    applySeatZoom();
+                    box.scrollLeft = ox * ratio - (cx == null ? rect.width / 2 : cx - rect.left);
+                    box.scrollTop = oy * ratio - (cy == null ? rect.height / 2 : cy - rect.top);
+                }
+                function initSeatZoomControls() {
+                    const box = document.getElementById('seatMapScroll');
+                    if (!box || box.dataset.zoomInit) return;
+                    box.dataset.zoomInit = '1';
+                    document.getElementById('seatZoomIn').addEventListener('click', () => zoomSeatBy(1.3));
+                    document.getElementById('seatZoomOut').addEventListener('click', () => zoomSeatBy(1 / 1.3));
+                    document.getElementById('seatZoomFit').addEventListener('click', () => fitSeatZoom());
+                    box.addEventListener('wheel', (e) => {
+                        // Plain wheel = scroll the map. Only ctrl/⌘ + wheel (and
+                        // trackpad pinch, which sets ctrlKey) zooms.
+                        if (!e.ctrlKey && !e.metaKey) return;
+                        e.preventDefault();
+                        zoomSeatBy(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY);
+                    }, { passive: false });
+
+                    // Drag to pan (mouse + single-finger touch). Movement past a small
+                    // threshold suppresses the seat click so panning never selects.
+                    let dragging = false, sx = 0, sy = 0, sl = 0, st = 0;
+                    box.addEventListener('pointerdown', (e) => {
+                        if (e.pointerType === 'mouse' && e.button !== 0) return;
+                        dragging = true; seatPanMoved = false;
+                        sx = e.clientX; sy = e.clientY; sl = box.scrollLeft; st = box.scrollTop;
+                    });
+                    box.addEventListener('pointermove', (e) => {
+                        if (!dragging) return;
+                        const dx = e.clientX - sx, dy = e.clientY - sy;
+                        if (!seatPanMoved && Math.abs(dx) + Math.abs(dy) > 6) seatPanMoved = true;
+                        if (seatPanMoved) { box.scrollLeft = sl - dx; box.scrollTop = st - dy; box.style.cursor = 'grabbing'; }
+                    });
+                    const endDrag = () => { dragging = false; box.style.cursor = ''; setTimeout(() => { seatPanMoved = false; }, 0); };
+                    box.addEventListener('pointerup', endDrag);
+                    box.addEventListener('pointercancel', endDrag);
+                    box.addEventListener('pointerleave', () => { dragging = false; box.style.cursor = ''; });
+
+                    // Two-finger pinch zoom.
+                    const pts = new Map(); let pinchDist = 0;
+                    box.addEventListener('pointerdown', (e) => { pts.set(e.pointerId, e); });
+                    box.addEventListener('pointermove', (e) => {
+                        if (!pts.has(e.pointerId)) return;
+                        pts.set(e.pointerId, e);
+                        if (pts.size === 2) {
+                            const [a, b] = [...pts.values()];
+                            const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+                            if (pinchDist) {
+                                seatPanMoved = true;
+                                zoomSeatBy(d / pinchDist, (a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2);
+                            }
+                            pinchDist = d;
+                        }
+                    });
+                    const dropPt = (e) => { pts.delete(e.pointerId); if (pts.size < 2) pinchDist = 0; };
+                    box.addEventListener('pointerup', dropPt);
+                    box.addEventListener('pointercancel', dropPt);
+                }
+
+                function renderLegend(data) {
+                    const leg = document.getElementById('seatLegend');
+                    let html = '';
+                    (data.categories || []).forEach(c => {
+                        html += `<span style="display:inline-flex;align-items:center;gap:.35rem;"><span style="width:.8rem;height:.8rem;border-radius:50%;background:${c.color};display:inline-block;"></span>${escHtml(c.name)} · ${Number(c.price).toFixed(2)} €</span>`;
+                    });
+                    if (!(data.categories || []).length) {
+                        html += `<span style="display:inline-flex;align-items:center;gap:.35rem;"><span style="width:.8rem;height:.8rem;border-radius:50%;background:#3b82f6;display:inline-block;"></span>${Number(data.base_price || 0).toFixed(2)} €</span>`;
+                    }
+                    html += `<span style="display:inline-flex;align-items:center;gap:.35rem;"><span style="width:.8rem;height:.8rem;border-radius:50%;background:#6b7280;display:inline-block;"></span>Sold</span>`;
+                    leg.innerHTML = html;
+                }
+                function escHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+                function seatNode(id) {
+                    return document.querySelector('.seat-node[data-seat="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+                }
+                // Visual only: paint a seat as picked (orange + white ring) or unpicked.
+                function markPicked(g, on) {
+                    const c = g.querySelector('circle'); if (!c) return;
+                    if (on) {
+                        c.setAttribute('fill', 'var(--avo-primary,#f97316)');
+                        c.setAttribute('fill-opacity', '1');
+                        c.setAttribute('stroke', '#ffffff'); c.setAttribute('stroke-width', '3');
+                        g.setAttribute('data-picked', '1');
+                    } else {
+                        c.setAttribute('fill', c.getAttribute('data-basefill') || '#3b82f6');
+                        c.setAttribute('fill-opacity', '1');
+                        c.setAttribute('stroke', '#0008'); c.setAttribute('stroke-width', '1');
+                        g.removeAttribute('data-picked');
+                    }
+                }
+
+                function toggleSeat(g) {
+                    const id = g.getAttribute('data-seat');
+                    const idx = selectedSeats.findIndex(s => s.id === id);
+                    if (idx >= 0) {
+                        selectedSeats.splice(idx, 1);
+                        markPicked(g, false);
+                    } else {
+                        if (selectedSeats.length >= SEAT_MAX) { showErrorDialog('You can select at most ' + SEAT_MAX + ' seats.'); return; }
+                        selectedSeats.push({
+                            id,
+                            label: g.getAttribute('data-label') || id,
+                            price: parseFloat(g.getAttribute('data-price')) || 0,
+                        });
+                        markPicked(g, true);
+                    }
+                    updateSeatDerived();
+                    checkOrphans();
+                    if (window.isSeated) scheduleSyncHold();   // reserve immediately
+                }
+
+                // Replace the whole selection at once (used by auto-pick / snap).
+                function setSelection(ids) {
+                    selectedSeats.slice().forEach(s => { const g = seatNode(s.id); if (g) markPicked(g, false); });
+                    selectedSeats = [];
+                    (ids || []).forEach(id => {
+                        const g = seatNode(id);
+                        if (!g || g.getAttribute('data-sold') === '1') return;
+                        selectedSeats.push({ id, label: g.getAttribute('data-label') || id, price: parseFloat(g.getAttribute('data-price')) || 0 });
+                        markPicked(g, true);
+                    });
+                    updateSeatDerived();
+                    checkOrphans();
+                    if (window.isSeated) scheduleSyncHold();
+                }
+
+                // ---- auto seat picking (anti-fragmentation) -------------------
+                let _seatWant = 1;
+                function seatWant() { return _seatWant; }
+                function setSeatWant(v) {
+                    _seatWant = Math.max(1, Math.min(SEAT_MAX, v | 0 || 1));
+                    const el = document.getElementById('seatWantVal'); if (el) el.textContent = _seatWant;
+                    const echo = document.getElementById('seatWantEcho'); if (echo) echo.textContent = _seatWant;
+                    renderSeatNames();
+                }
+                // Extra-ticket name inputs live in the count phase (persons 2..N),
+                // driven by the chosen amount. Preserve whatever was typed.
+                function renderSeatNames() {
+                    const c = document.getElementById('seatNameFields');
+                    if (!c) return;
+                    const prev = [...c.querySelectorAll('input[name="add_people[]"]')].map(i => i.value);
+                    c.replaceChildren();
+                    for (let i = 2; i <= _seatWant; i++) {
+                        const grp = document.createElement('div'); grp.className = 'space-y-2';
+                        const label = document.createElement('label'); label.className = 'block text-sm font-medium avo-muted';
+                        label.textContent = '<?php echo addslashes($current_language === "de" ? "Name für Ticket" : "Name for ticket"); ?> ' + i;
+                        const input = document.createElement('input');
+                        input.type = 'text'; input.name = 'add_people[]'; input.placeholder = 'Max Mustermann';
+                        input.required = true; input.className = 'input w-full';
+                        input.value = prev[i - 2] || '';
+                        grp.appendChild(label); grp.appendChild(input); c.appendChild(grp);
+                    }
+                }
+                // Two-phase step 2: choose the count first, then reveal the map.
+                function showSeatCountPhase() {
+                    document.getElementById('seatCountPhase')?.classList.remove('hidden');
+                    document.getElementById('seatMapPhase')?.classList.add('hidden');
+                }
+                function showSeatMapPhase() {
+                    document.getElementById('seatCountPhase')?.classList.add('hidden');
+                    document.getElementById('seatMapPhase')?.classList.remove('hidden');
+                    // Map had no width while hidden — size it once it's visible.
+                    requestAnimationFrame(() => requestAnimationFrame(resetSeatZoom));
+                }
+                function initSeatAuto() {
+                    const bar = document.getElementById('seatCountPhase');
+                    if (!bar || bar.dataset.init) return;
+                    bar.dataset.init = '1';
+                    document.getElementById('seatWantMinus').addEventListener('click', () => setSeatWant(_seatWant - 1));
+                    document.getElementById('seatWantPlus').addEventListener('click', () => setSeatWant(_seatWant + 1));
+                    document.getElementById('seatCountNext').addEventListener('click', () => showSeatMapPhase());
+                    document.getElementById('seatAutoPick').addEventListener('click', () => { showSeatMapPhase(); pickBestSeats(_seatWant); });
+                    document.getElementById('seatCountBack').addEventListener('click', () => { setSelection([]); showSeatCountPhase(); });
+                }
+
+                function isSeatFree(id) { const g = seatNode(id); return !!g && g.getAttribute('data-sold') !== '1'; }
+
+                // Group seats into rows and sort each by x. Uses the seat's `row`
+                // field when present, else clusters by y.
+                function seatRows() {
+                    const seats = ((seatAvail && seatAvail.elements) || []).filter(e => e.type === 'seat');
+                    let rows = [];
+                    const useRow = seats.some(s => s.row != null && String(s.row).trim() !== '');
+                    if (useRow) {
+                        const m = {};
+                        seats.forEach(s => { const k = String(s.row); (m[k] = m[k] || []).push(s); });
+                        rows = Object.keys(m).map(k => ({ seats: m[k], y: m[k][0].y }));
+                        rows.sort((a, b) => a.y - b.y);
+                    } else {
+                        const sorted = seats.slice().sort((a, b) => a.y - b.y);
+                        const tol = SEAT_R * 1.5; let cur = [], cy = null;
+                        sorted.forEach(s => {
+                            if (cy === null || Math.abs(s.y - cy) <= tol) { cur.push(s); cy = cy === null ? s.y : (cy + s.y) / 2; }
+                            else { rows.push({ seats: cur, y: cy }); cur = [s]; cy = s.y; }
+                        });
+                        if (cur.length) rows.push({ seats: cur, y: cy });
+                    }
+                    rows.forEach(r => r.seats.sort((a, b) => a.x - b.x));
+                    return rows;
+                }
+
+                // Split a row into physical runs (an aisle = a gap much larger than
+                // the typical seat spacing breaks a run).
+                function rowRuns(row) {
+                    const ss = row.seats;
+                    const gaps = []; for (let i = 1; i < ss.length; i++) gaps.push(ss[i].x - ss[i - 1].x);
+                    const med = gaps.length ? gaps.slice().sort((a, b) => a - b)[Math.floor(gaps.length / 2)] : 0;
+                    const thr = med ? med * 1.6 : Infinity;
+                    const runs = []; let seg = [];
+                    for (let i = 0; i < ss.length; i++) {
+                        if (i > 0 && (ss[i].x - ss[i - 1].x) > thr) { runs.push(seg); seg = []; }
+                        seg.push(ss[i]);
+                    }
+                    if (seg.length) runs.push(seg);
+                    return runs;
+                }
+
+                // Maximal contiguous stretches of currently-free seats, each bounded
+                // by taken seats / aisles / row ends (so any size-1 remainder is a
+                // true orphan). Carries row centering info for scoring.
+                function freeSegments() {
+                    const rows = seatRows();
+                    const n = rows.length, mid = (n - 1) / 2;
+                    const segs = [];
+                    rows.forEach((row, ri) => {
+                        rowRuns(row).forEach(run => {
+                            const rx0 = run[0].x, rx1 = run[run.length - 1].x, rcx = (rx0 + rx1) / 2;
+                            let cur = [];
+                            const flush = () => { if (cur.length) { segs.push({ seats: cur, rowDist: Math.abs(ri - mid), rowCenterX: rcx }); cur = []; } };
+                            run.forEach(s => { if (isSeatFree(s.id)) cur.push(s); else flush(); });
+                            flush();
+                        });
+                    });
+                    return segs;
+                }
+
+                // Best contiguous block of n free seats: never leave a lone orphan,
+                // prefer a perfect fit, then central rows and central position.
+                function pickBestSeats(n) {
+                    n = Math.max(1, Math.min(SEAT_MAX, n | 0 || 1));
+                    const segs = freeSegments();
+                    let best = null;
+                    segs.forEach(seg => {
+                        const L = seg.seats.length; if (L < n) return;
+                        for (let off = 0; off <= L - n; off++) {
+                            const leftRem = off, rightRem = L - n - off;
+                            let sc = 0;
+                            if (leftRem === 1) sc += 1000;
+                            if (rightRem === 1) sc += 1000;
+                            if (L === n) sc -= 200;
+                            const block = seg.seats.slice(off, off + n);
+                            const bx = (block[0].x + block[block.length - 1].x) / 2;
+                            sc += seg.rowDist * 5;
+                            sc += Math.abs(bx - seg.rowCenterX) / 40;
+                            if (!best || sc < best.sc) best = { sc, ids: block.map(b => b.id) };
+                        }
+                    });
+                    if (!best) {
+                        showErrorDialog('<?php echo addslashes($current_language === "de" ? "Nicht genug freie Plätze nebeneinander. Bitte wählen Sie einzeln." : "Not enough adjacent free seats. Please pick seats individually."); ?>');
+                        return;
+                    }
+                    setSelection(best.ids);
+                    scrollToSeat(best.ids[0]);
+                }
+
+                // Snap a block of n seats near a clicked anchor (same row), keeping
+                // the anchor covered and avoiding orphans.
+                function snapBlockAt(anchorId, n) {
+                    n = Math.max(1, Math.min(SEAT_MAX, n | 0 || 1));
+                    let host = null, ai = -1;
+                    outer:
+                    for (const seg of freeSegments()) {
+                        const k = seg.seats.findIndex(s => s.id === anchorId);
+                        if (k >= 0) { host = seg; ai = k; break outer; }
+                    }
+                    if (!host || host.seats.length < n) { pickBestSeats(n); return; }
+                    const L = host.seats.length;
+                    const lo = Math.max(0, ai - (n - 1)), hi = Math.min(ai, L - n);
+                    let best = null;
+                    for (let off = lo; off <= hi; off++) {
+                        const leftRem = off, rightRem = L - n - off;
+                        let sc = 0;
+                        if (leftRem === 1) sc += 1000;
+                        if (rightRem === 1) sc += 1000;
+                        sc += (ai - off) * 2; // keep anchor near the block's left/click point
+                        if (!best || sc < best.sc) best = { sc, ids: host.seats.slice(off, off + n).map(b => b.id) };
+                    }
+                    setSelection(best.ids);
+                    scrollToSeat(anchorId);
+                }
+
+                function onSeatClick(g) {
+                    const id = g.getAttribute('data-seat');
+                    const want = seatWant();
+                    if (want > 1) { snapBlockAt(id, want); return; }
+                    toggleSeat(g); // single-seat mode: additive tap-to-toggle
+                }
+
+                function scrollToSeat(id) {
+                    const g = seatNode(id), box = document.getElementById('seatMapScroll');
+                    if (!g || !box) return;
+                    const bb = g.getBoundingClientRect(), rb = box.getBoundingClientRect();
+                    box.scrollLeft += (bb.left + bb.width / 2) - (rb.left + rb.width / 2);
+                    box.scrollTop += (bb.top + bb.height / 2) - (rb.top + rb.height / 2);
+                }
+
+                // Gentle warning when the current selection would strand a lone seat.
+                function checkOrphans() {
+                    const hint = document.getElementById('seatOrphanHint');
+                    if (!hint) return;
+                    if (!selectedSeats.length) { hint.classList.add('hidden'); return; }
+                    const sel = new Set(selectedSeats.map(s => s.id));
+                    const freeAfter = id => isSeatFree(id) && !sel.has(id);
+                    let orphan = false;
+                    seatRows().forEach(row => {
+                        rowRuns(row).forEach(run => {
+                            for (let i = 0; i < run.length; i++) {
+                                if (!freeAfter(run[i].id)) continue;
+                                const lFree = i > 0 && freeAfter(run[i - 1].id);
+                                const rFree = i < run.length - 1 && freeAfter(run[i + 1].id);
+                                if (lFree || rFree) continue; // not isolated
+                                const adjSel = (i > 0 && sel.has(run[i - 1].id)) || (i < run.length - 1 && sel.has(run[i + 1].id));
+                                if (adjSel) orphan = true;
+                            }
+                        });
+                    });
+                    if (orphan) {
+                        hint.textContent = '<?php echo addslashes($current_language === "de" ? "Hinweis: Neben Ihrer Auswahl bleibt ein einzelner Platz frei – vielleicht mit dazunehmen?" : "Note: your selection leaves a single seat empty next to it — maybe add it too?"); ?>';
+                        hint.classList.remove('hidden');
+                    } else {
+                        hint.classList.add('hidden');
+                    }
+                }
+
+                function seatTotal() { return selectedSeats.reduce((a, s) => a + s.price, 0); }
+
+                function updateSeatDerived() {
+                    const n = selectedSeats.length;
+                    const total = seatTotal();
+                    // Info line.
+                    const info = document.getElementById('seatSelInfo');
+                    info.textContent = n
+                        ? (n + ' seat' + (n > 1 ? 's' : '') + ' · ' + total.toFixed(2) + ' €')
+                        : 'Tap seats to select.';
+                    // Submitted price + ticket count.
+                    document.getElementById('ticketPrice').value = total.toFixed(2);
+                    const sel = document.querySelector('select[name="tickets"]');
+                    if (sel) {
+                        if (!sel.querySelector('option[value="' + Math.max(1, n) + '"]')) {
+                            const o = document.createElement('option'); o.value = Math.max(1, n); sel.appendChild(o);
+                        }
+                        sel.value = Math.max(1, n);
+                    }
+                    // Hidden seats[] inputs (order = selection order).
+                    const box = document.getElementById('seatsHidden');
+                    box.innerHTML = '';
+                    selectedSeats.forEach(s => {
+                        const i = document.createElement('input');
+                        i.type = 'hidden'; i.name = 'seats[]'; i.value = s.id; box.appendChild(i);
+                    });
+                    // Keep the chosen amount (and its name fields, shown in the count
+                    // phase) in step with the actual selection — e.g. when single-tap
+                    // mode adds more seats than initially requested.
+                    if (n >= 1 && n !== _seatWant) setSeatWant(n);
+                }
+
+                // ---- live availability (so two buyers don't fight over a seat) ----
+                let seatPollId = null;
+                function startSeatPoll() {
+                    stopSeatPoll();
+                    refreshSeatStatuses();
+                    seatPollId = setInterval(refreshSeatStatuses, 5000);
+                }
+                function stopSeatPoll() {
+                    if (seatPollId) { clearInterval(seatPollId); seatPollId = null; }
+                }
+                async function refreshSeatStatuses() {
+                    if (!window.isSeated) return;
+                    let data;
+                    try {
+                        const r = await fetch('seat-proxy.php?action=availability&date=' + encodeURIComponent(document.getElementById('validDate').value));
+                        data = await r.json();
+                    } catch (e) { return; }
+                    if (!data || data.status !== 'success' || !data.seating) return;
+                    const byId = {};
+                    (data.elements || []).forEach(e => { if (e.type === 'seat') byId[e.id] = e; });
+                    const setSold = (g) => {
+                        const c = g.querySelector('circle');
+                        g.setAttribute('data-sold', '1'); g.style.cursor = 'not-allowed';
+                        c.setAttribute('fill', '#6b7280'); c.setAttribute('fill-opacity', '0.4');
+                        c.setAttribute('stroke', '#0008'); c.setAttribute('stroke-width', '1');
+                    };
+                    const setFree = (g) => {
+                        const c = g.querySelector('circle');
+                        g.setAttribute('data-sold', '0'); g.style.cursor = 'pointer';
+                        c.setAttribute('fill', c.getAttribute('data-basefill') || '#3b82f6');
+                        c.setAttribute('fill-opacity', '1'); c.setAttribute('stroke', '#0008'); c.setAttribute('stroke-width', '1');
+                    };
+                    const lost = [];
+                    document.querySelectorAll('.seat-node').forEach(g => {
+                        const id = g.getAttribute('data-seat');
+                        const e = byId[id]; if (!e) return;
+                        const taken = e.status === 'sold' || e.status === 'held';
+                        const mine = selectedSeats.some(s => s.id === id);
+                        if (mine) {
+                            // My own soft-hold reads back as "held" — that's fine. Only a
+                            // real loss is: sold, or held while I don't hold it yet.
+                            if (e.status === 'sold' || (e.status === 'held' && !holdActive)) lost.push(id);
+                            return;
+                        }
+                        if (taken && g.getAttribute('data-sold') !== '1') setSold(g);
+                        else if (!taken && g.getAttribute('data-sold') === '1') setFree(g);
+                    });
+                    if (lost.length) {
+                        const labels = [];
+                        lost.forEach(id => {
+                            const i = selectedSeats.findIndex(s => s.id === id);
+                            if (i >= 0) { labels.push(selectedSeats[i].label); selectedSeats.splice(i, 1); }
+                            const g = document.querySelector('.seat-node[data-seat="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+                            if (g) setSold(g);
+                        });
+                        updateSeatDerived();
+                        showErrorDialog('<?php echo addslashes($current_language === "de" ? "Ein gewählter Platz wurde gerade von jemand anderem genommen:" : "A seat you picked was just taken by someone else:"); ?> ' + labels.join(', '));
+                    }
+                    checkOrphans();
+                }
+
+                // Reserve the current selection the moment it changes (debounced), so
+                // a second buyer sees these seats as taken within one poll cycle and
+                // can't pick them too.
+                let syncTimer = null, syncing = false, syncAgain = false;
+                function scheduleSyncHold() {
+                    clearTimeout(syncTimer);
+                    syncTimer = setTimeout(syncHold, 450);
+                }
+                async function syncHold() {
+                    if (!window.isSeated) return;
+                    if (syncing) { syncAgain = true; return; }
+                    syncing = true;
+                    try {
+                        if (document.getElementById('holdToken').value) await releaseSeatHold();
+                        if (selectedSeats.length) await placeSeatHold();
+                    } finally {
+                        syncing = false;
+                        if (syncAgain) { syncAgain = false; syncHold(); }
+                    }
+                }
+
+                async function placeSeatHold() {
+                    if (!selectedSeats.length) return false;
+                    const fd = new FormData();
+                    fd.append('csrf_token', csrfValue());
+                    fd.append('action', 'hold');
+                    fd.append('date', document.getElementById('validDate').value);
+                    selectedSeats.forEach(s => fd.append('seats[]', s.id));
+                    let res;
+                    try {
+                        const r = await fetch('seat-proxy.php', { method: 'POST', body: fd });
+                        res = await r.json();
+                    } catch (e) { showErrorDialog('Network error. Please try again.'); return false; }
+                    if (!res || res.status !== 'success' || !res.hold_token) {
+                        // Someone grabbed a seat first — refresh and let them re-pick.
+                        await loadSeatAvailability(document.getElementById('validDate').value);
+                        showErrorDialog('Sorry, one or more of your seats was just taken. Please choose again.');
+                        return false;
+                    }
+                    holdActive = true;
+                    document.getElementById('holdToken').value = res.hold_token;
+                    startHoldTimer(res.ttl || 600);
+                    return true;
+                }
+
+                function startHoldTimer(ttl) {
+                    clearHoldTimer();
+                    const el = document.getElementById('seatHoldTimer');
+                    el.classList.remove('hidden');
+                    let remaining = ttl;
+                    const tick = () => {
+                        const m = Math.floor(remaining / 60), s = remaining % 60;
+                        el.textContent = 'Seats reserved for ' + m + ':' + String(s).padStart(2, '0');
+                        if (remaining <= 0) {
+                            clearHoldTimer();
+                            holdActive = false;
+                            document.getElementById('holdToken').value = '';
+                            el.classList.add('hidden');
+                            showErrorDialog('Your seat reservation expired. Please pick your seats again.');
+                            goToStep(2);
+                            loadSeatAvailability(document.getElementById('validDate').value);
+                            return;
+                        }
+                        remaining -= 1;
+                    };
+                    tick();
+                    holdTimerId = setInterval(tick, 1000);
+                }
+                function clearHoldTimer() { if (holdTimerId) { clearInterval(holdTimerId); holdTimerId = null; } }
+
+                async function releaseSeatHold() {
+                    clearHoldTimer();
+                    document.getElementById('seatHoldTimer')?.classList.add('hidden');
+                    const token = document.getElementById('holdToken').value;
+                    if (!token) { holdActive = false; return; }
+                    document.getElementById('holdToken').value = '';
+                    holdActive = false;
+                    const fd = new FormData();
+                    fd.append('csrf_token', csrfValue());
+                    fd.append('action', 'release');
+                    fd.append('date', document.getElementById('validDate').value);
+                    fd.append('hold_token', token);
+                    try { await fetch('seat-proxy.php', { method: 'POST', body: fd, keepalive: true }); } catch (e) {}
+                }
+
+                function showBookingForm(showId, date, price, ticketsAvailable, dateDisplay, location, seating) {
                     lastFocusedElement = document.activeElement;
                     document.getElementById('bookingModal').showModal();
 
+                    window.isSeated = seating == 1 || seating === true;
                     document.getElementById('validDate').value = date;
                     document.getElementById('ticketPrice').value = price;
+                    document.getElementById('holdToken').value = '';
+                    document.getElementById('seatsHidden').innerHTML = '';
+                    selectedSeats = [];
                     document.body.style.overflow = 'hidden';
+
+                    const gaWrap = document.getElementById('gaTicketWrap');
+                    const seatWrap = document.getElementById('seatPickerWrap');
+                    if (window.isSeated) {
+                        gaWrap.classList.add('hidden');
+                        seatWrap.classList.remove('hidden');
+                        loadSeatAvailability(date);
+                    } else {
+                        gaWrap.classList.remove('hidden');
+                        seatWrap.classList.add('hidden');
+                    }
 
                     // Persistent context banner: show chosen date + location on every step.
                     selectedDateDisplay = dateDisplay || '';
@@ -1403,6 +2247,9 @@ HTML;
                         locRow.style.display = 'none';
                     }
                     ctx.classList.remove('hidden');
+                    // Mobile mirror (sidebar date card is hidden on small screens).
+                    const mDate = document.getElementById('mobileStepDate');
+                    if (mDate) mDate.textContent = [selectedDateDisplay, selectedLocation].filter(Boolean).join(' · ');
 
                     const ticketsSelect = document.querySelector('select[name="tickets"]');
                     ticketsSelect.innerHTML = '';

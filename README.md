@@ -28,9 +28,10 @@ QrGate is a comprehensive system for managing events, tickets, and access contro
 
 ### Key Features
 
-- **Guided Ticket Checkout**: Multi-step booking wizard (details → tickets & names → payment → confirm) with **Stripe** (card) and **cash** (pay-at-door) support
+- **Guided Ticket Checkout**: Fullscreen, multi-step booking wizard (details → tickets & names → payment → confirm) with **Stripe** (card) and **cash** (pay-at-door) support, tuned for large screens and mobile alike
+- **Reserved Seating**: Optional per-event seat maps with a visual seat picker — choose the amount first, then tap the hall; an **auto best-seats / snap** helper places adjacent seats and avoids stranding lone gaps. Live availability polling plus atomic 10-minute seat holds keep two buyers from grabbing the same seat
 - **Binding Booking Consent**: Mandatory consent checkbox plus cancellation/storno info, enforced server-side; configurable contact email shown to customers
-- **Ticket Delivery**: PDF tickets by email with the QR code embedded inline (generated in-memory — single-page layout)
+- **Ticket Delivery**: PDF tickets by email with the QR code embedded inline (generated in-memory — A4 e-ticket, A5 box-office layout, and multi-ticket batch prints)
 - **Access Control**: QR code-based ticket validation for entry, with a mobile handheld scanner
 - **Admin Panel**: Dashboard for events, dates, locations, images, tickets and statistics
 - **Maintenance & Data Tools**: One-click **database backup** download plus a guarded danger zone (wipe data, reinstall, factory reset)
@@ -41,9 +42,10 @@ QrGate is a comprehensive system for managing events, tickets, and access contro
 
 - **CSRF Protection**: All forms are protected against Cross-Site Request Forgery attacks
 - **XSS Prevention**: User inputs are sanitized using `htmlspecialchars()`
-- **Session-based Authentication**: Secure login system with PHP sessions
-- **API Key Authentication**: Backend communication secured with authorization headers
-- **Role-based Access Control**: Three user levels (Admin, Ticketflow, Handheld)
+- **Session-based Authentication**: Secure login system with PHP sessions, idle/absolute timeouts and a per-IP brute-force throttle on login
+- **API Key Authentication**: Backend communication secured with authorization headers (timing-safe compare)
+- **Role-based Access Control**: Three roles (Admin, Ticketflow, Handheld) — either as managed per-user accounts with granular permissions (password hashes stored server-side) or as legacy shared role passwords
+- **Rate Limiting & Signed Links**: In-process rate limiting on sensitive endpoints, HMAC-signed ticket PDF links, plus honeypot and server-side consent enforcement on bookings
 
 ## Screenshots
 <img width="2560" height="1492" alt="image" src="https://github.com/user-attachments/assets/d7e8562a-fd46-45d8-a389-45bc17bfee2e" />
@@ -193,7 +195,7 @@ docker compose -f docker-compose.single.yml up -d --build
 
 **Backend:**
 
-- Python 3.7 or higher
+- Python 3.9 or higher (the standard-library `zoneinfo` module is required; the Docker image uses Python 3.12)
 - pip (Python package manager)
 
 **Frontend:**
@@ -272,10 +274,10 @@ docker compose -f docker-compose.single.yml up -d --build
 ```
 QrGate/
 ├── backend/
-│   ├── assets/              # Backend modules (ticket management, validation, etc.)
+│   ├── assets/              # Backend modules (ticket management, validation, seat maps, etc.)
 │   ├── config/              # Configuration files (conf.py, env-overridable)
 │   ├── codes/               # Generated PDFs and QR codes
-│   ├── data/                # Data storage (shows, tickets, stats)
+│   ├── data/                # Data storage (SQLite qrgate.db, settings, uploaded assets)
 │   ├── requirements.txt     # Python dependencies
 │   ├── Dockerfile           # Backend container image
 │   └── main.py              # Main backend server
@@ -283,14 +285,20 @@ QrGate/
 ├── frontend/
 │   ├── admin/               # Admin interface
 │   │   ├── ticketflow/      # Box office interface
-│   │   └── handheld/        # Mobile QR scanner
+│   │   ├── handheld/        # Mobile QR scanner
+│   │   ├── seatmap.php      # Seat map editor UI
+│   │   ├── seatmap-editor.js# Konva-based hall designer
+│   │   └── seatmap-proxy.php# Admin seat map get/save proxy
+│   ├── seat-proxy.php       # Buyer seat availability + hold/release proxy
 │   ├── help/                # Help pages
-│   ├── screens/             # Event display screens
+│   ├── screens/             # Event display / projection screens
+│   ├── vote/                # Public audience voting page
 │   ├── docker/              # nginx, php-fpm, supervisor config for the container
-│   ├── buy.php              # Ticket purchase
+│   ├── buy.php              # Ticket purchase handler
+│   ├── install.php          # First-run setup wizard UI
 │   ├── config.php           # Frontend configuration (env-overridable)
 │   ├── Dockerfile           # Frontend container image (nginx + PHP-FPM)
-│   └── index.php            # Main page
+│   └── index.php            # Main page + booking wizard
 │
 ├── Dockerfile               # All-in-one image (backend + PHP + nginx)
 ├── docker/                  # Service config for the all-in-one image
@@ -328,20 +336,43 @@ The admin panel provides the following features:
 
 - **Dashboard**: Overview of sold tickets, available tickets, and estimated revenue
 - **Statistics**: Graphical display of ticket sales and availability
-- **Event Management**: Edit event settings
+- **Event Management**: Edit event settings, locations, and screens/projection displays
+- **Seat Map Editor**: Visual per-location hall designer (seats, rows, tables, stage/screen, walls, labels) with fast row/block fill, price categories, and seat auto-numbering
 - **Date Management**: Add, edit, and delete event dates
-- **Image Management**: Upload and manage event images
+- **Image Management**: Upload and manage event images (banner, logo, wallpaper, cast)
+- **Payment Settings**: Configure Stripe keys and the enabled payment methods
+- **Account Management**: Create, edit, and delete user accounts with per-user permissions
+- **Maintenance**: One-click database backup download plus a guarded danger zone (wipe data, reinstall, factory reset)
+- **App Launcher**: Open the Admin, TicketFlow (box office), and Handheld scanner apps per account permissions
 
 ## API Routes
 
-| Route                | Method | Purpose             |
-|----------------------|--------|---------------------|
-| `/api/ticket/create`   | POST   | Create ticket       |
-| `/api/ticket/validate` | POST   | QR validation       |
-| `/api/show/get`        | GET    | Event info          |
-| `/api/show/edit`       | POST   | Update event        |
-| `/api/stats`           | GET    | Sales statistics    |
-| `/codes/pdf?tid=X`     | GET    | Download ticket PDF |
+All `/api/*` routes require the `Authorization: {auth_key}` header, except the public ones noted below. This is a selection of the most common routes; see the modules in `backend/assets/` for the full set.
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/api/ticket/create` | POST | Create a ticket (public buyer flow) |
+| `/api/ticketflow/create` | POST | Box-office ticket sale |
+| `/api/ticket/get` | GET/POST | Look up a ticket by id |
+| `/api/ticket/edit` | POST | Edit a ticket |
+| `/api/ticket/cancel` | POST | Cancel ticket (+ Stripe refund) |
+| `/api/ticket/validate` | GET/POST | Validate/scan a ticket at the door |
+| `/codes/pdf?tid=X&token=Y` | GET | Download ticket PDF (gated by per-ticket HMAC token, not the auth key; `?tids=&tokens=` for batches) |
+| `/api/show/get` | GET/POST | Full event config |
+| `/api/show/edit` | POST | Update event config |
+| `/api/seatmap/get` | GET | Get a location's seat map layout |
+| `/api/seatmap/save` | POST | Save a location's seat map layout |
+| `/api/seatmap/availability` | GET/POST | Seat states (free/held/sold) for a date |
+| `/api/seat/hold` \| `/api/seat/release` | POST | Atomic seat hold / release (10-min TTL) |
+| `/api/show/get/stripe_pub_key` | GET | Stripe publishable key (public) |
+| `/api/stats` | GET | Sales/income statistics |
+| `/api/vote` | POST | Submit an audience rating |
+| `/api/auth/login` | POST | User account login |
+| `/api/users/list` \| `/create` \| `/update` \| `/delete` | GET/POST | Manage user accounts |
+| `/api/setup/status` | GET | Install state (public) |
+| `/api/setup/complete` | POST | Run the first-run wizard (locks after install) |
+| `/api/admin/backup` | GET | Download a SQLite backup |
+| `/api/admin/wipe-data` \| `/reinstall` \| `/factory-reset` | POST | Danger-zone maintenance |
 
 ## Configuration
 
@@ -366,6 +397,11 @@ For containerized or 12-factor deployments, every config value can be overridden
 | `QRGATE_BACKEND_URL` | backend | `API.backend_url` |
 | `QRGATE_FRONTEND_ORIGIN` | backend | `API.frontend_origin` (CORS) |
 | `QRGATE_ORIGIN_URL` | frontend | `ORIGIN_URL` |
+| `QRGATE_TIMEZONE` | backend | `config.timezone` (IANA, default `Europe/Berlin`) |
+| `QRGATE_SETUP_URL` | backend | Install-wizard link printed in the logs |
+| `QRGATE_WEB_PORT` | backend | Host port used only to print the correct setup link (single-container) |
+| `QRGATE_PORT` | backend | `API.port` (default `1654`) |
+| `QRGATE_ADMIN_USERNAMES` / `QRGATE_TICKETFLOW_USERNAMES` / `QRGATE_HANDHELD_USERNAMES` | backend | role usernames for the legacy shared-password login |
 | `QRGATE_ADMIN_PASSWORD` / `QRGATE_TICKETFLOW_PASSWORD` / `QRGATE_HANDHELD_PASSWORD` | backend + frontend | role passwords |
 | `QRGATE_SMTP_SERVER` / `QRGATE_SMTP_PORT` / `QRGATE_SMTP_USER` / `QRGATE_SMTP_PASSWORD` | backend | `Mail.*` |
 

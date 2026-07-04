@@ -9,6 +9,9 @@ from assets.data import (
     set_ticket_refund,
     get_intent_for_ticket,
     append_access_attempt,
+    seat_index,
+    bind_seats,
+    release_seats_for_ticket,
 )
 from assets.stats import log_ticket_sale, log_ticket_refund
 from assets.timeutil import local_now
@@ -475,46 +478,109 @@ def create_ticket(app=quart.Quart):
                         409,
                     )
 
-            # Atomically reserve the seats so two concurrent buyers can't
-            # oversell the same date (single-statement guarded UPDATE).
-            if not await asyncio.to_thread(decrement_availability, valid_date, tickets):
-                return (
-                    quart.jsonify(
-                        {"status": "error", "message": "Not enough tickets available"}
-                    ),
-                    409,
-                )
+            # --- reserved seating vs general admission --------------------
+            # A seated date's capacity IS its chosen seats (claimed atomically
+            # via bind_seats below); a general-admission date uses the numeric
+            # tickets_available counter. `seats`/`hold_token` come from the
+            # buyer's seat picker.
+            seated = bool(date.get("seating"))
+            location_id = date.get("location") or ""
+            seat_ids = [str(s) for s in (data.get("seats") or []) if s]
+            hold_token = data.get("hold_token")
+            total_people = 1 + len(add_people)
+            seat_map_idx: dict = {}
+            if seated:
+                if len(seat_ids) != total_people:
+                    return (
+                        quart.jsonify(
+                            {"status": "error", "message": "seat_count_mismatch"}
+                        ),
+                        400,
+                    )
+                seat_map_idx = await asyncio.to_thread(seat_index, location_id)
+                unknown = [s for s in seat_ids if s not in seat_map_idx]
+                if unknown:
+                    return (
+                        quart.jsonify(
+                            {"status": "error", "message": "Unknown seats", "seats": unknown}
+                        ),
+                        400,
+                    )
+                # How many attendees this order represents (used for stats).
+                sale_count = total_people
+            else:
+                sale_count = tickets
+                # Atomically reserve the seats so two concurrent buyers can't
+                # oversell the same date (single-statement guarded UPDATE).
+                if not await asyncio.to_thread(decrement_availability, valid_date, tickets):
+                    return (
+                        quart.jsonify(
+                            {"status": "error", "message": "Not enough tickets available"}
+                        ),
+                        409,
+                    )
 
-            # Everything after the (committed) seat reservation must give the
-            # seats back if it throws, otherwise capacity leaks with no ticket.
+            # Everything after capacity is claimed must give it back if it
+            # throws, otherwise capacity leaks with no ticket issued.
+            all_tids: List[str] = []
             try:
                 price_per_ticket = float(date["price"])
-                amount = price_per_ticket * tickets
+                amount = price_per_ticket * sale_count
+
+                # Pre-generate an id for every attendee (main + add-people) so
+                # seats can be bound to their tickets before anything persists.
+                all_tids = [generate_ticket_id(valid_date) for _ in range(total_people)]
+                main_tid = all_tids[0]
+
+                # Claim the chosen seats atomically. If any was taken during
+                # checkout, nothing is saved and the buyer must pick again.
+                seat_assignment: dict = {}  # tid -> {"seat_id","seat_label"}
+                if seated:
+                    mapping = {seat_ids[i]: all_tids[i] for i in range(total_people)}
+                    ok, taken = await asyncio.to_thread(
+                        bind_seats, valid_date, mapping, hold_token
+                    )
+                    if not ok:
+                        return (
+                            quart.jsonify(
+                                {"status": "error", "message": "seats_taken", "seats": taken}
+                            ),
+                            409,
+                        )
+                    for i, t in enumerate(all_tids):
+                        info = seat_map_idx.get(seat_ids[i], {})
+                        seat_assignment[t] = {
+                            "seat_id": seat_ids[i],
+                            "seat_label": info.get("label"),
+                        }
 
                 # Atomically consume the PaymentIntent BEFORE issuing tickets.
                 # If another concurrent/replayed request already consumed it,
                 # mark_intent_used returns False -> treat as a duplicate and
-                # bail out (rolling back the seats we just reserved) so a paid
+                # bail out (rolling back the capacity we just claimed) so a paid
                 # intent yields exactly one ticket-order.
                 if enforce_intent:
-                    main_tid = generate_ticket_id(valid_date)
                     newly = await asyncio.to_thread(
                         mark_intent_used, payment_intent_id, main_tid, amount
                     )
                     if not newly:
-                        await asyncio.to_thread(
-                            release_availability, valid_date, tickets
-                        )
+                        if seated:
+                            for t in all_tids:
+                                await asyncio.to_thread(
+                                    release_seats_for_ticket, valid_date, t
+                                )
+                        else:
+                            await asyncio.to_thread(
+                                release_availability, valid_date, tickets
+                            )
                         return (
                             quart.jsonify(
                                 {"status": "error", "message": "payment_already_used"}
                             ),
                             409,
                         )
-                else:
-                    main_tid = generate_ticket_id(valid_date)
 
-                log_ticket_sale(valid_date, tickets, price_per_ticket)
+                log_ticket_sale(valid_date, sale_count, price_per_ticket)
 
                 created_tids: List[str] = []
 
@@ -523,9 +589,9 @@ def create_ticket(app=quart.Quart):
                 # the one the charge is tied to); add-people tickets ride along.
                 method = str(data.get("method") or ("stripe" if payment_intent_id else ("paid" if paid else "free")))
 
-                tid = main_tid
+                sa = seat_assignment.get(main_tid, {})
                 ticket = {
-                    "tid": tid,
+                    "tid": main_tid,
                     "first_name": first_name,
                     "last_name": last_name,
                     "email": email,
@@ -538,12 +604,17 @@ def create_ticket(app=quart.Quart):
                     "status": "active",
                     "method": method,
                     "payment_intent": payment_intent_id if (paid and payment_intent_id) else None,
+                    "seat_id": sa.get("seat_id"),
+                    "seat_label": sa.get("seat_label"),
+                    "location": location_id if seated else None,
                 }
-                await asyncio.to_thread(save_tickets, tid, ticket)
-                created_tids.append(tid)
+                await asyncio.to_thread(save_tickets, main_tid, ticket)
+                created_tids.append(main_tid)
+                tid = main_tid  # response tid (overwritten by last add-person, if any)
 
-                for person in add_people:
-                    tid = generate_ticket_id(valid_date)
+                for idx, person in enumerate(add_people):
+                    tid = all_tids[idx + 1]
+                    sa = seat_assignment.get(tid, {})
                     ticket = {
                         "tid": tid,
                         "first_name": person,
@@ -558,13 +629,20 @@ def create_ticket(app=quart.Quart):
                         "status": "active",
                         "method": method,
                         "payment_intent": None,
+                        "seat_id": sa.get("seat_id"),
+                        "seat_label": sa.get("seat_label"),
+                        "location": location_id if seated else None,
                     }
                     await asyncio.to_thread(save_tickets, tid, ticket)
                     created_tids.append(tid)
             except Exception:
-                # Roll back the reserved seats so a mid-flight failure does not
-                # silently burn capacity with no ticket issued, then re-raise.
-                await asyncio.to_thread(release_availability, valid_date, tickets)
+                # Roll back the claimed capacity so a mid-flight failure does not
+                # silently burn seats with no ticket issued, then re-raise.
+                if seated:
+                    for t in all_tids:
+                        await asyncio.to_thread(release_seats_for_ticket, valid_date, t)
+                else:
+                    await asyncio.to_thread(release_availability, valid_date, tickets)
                 raise
 
             # Tickets are persisted; emailing must NOT be able to lose a paid
@@ -1348,7 +1426,12 @@ def cancel_ticket(app=quart.Quart):
             if valid_date and valid_date != "Unlimited" and t_type not in ("admin", "vip"):
                 date_info = await asyncio.to_thread(load_date, valid_date)
                 if date_info:
-                    await asyncio.to_thread(increment_availability, valid_date, 1)
+                    if date_info.get("seating"):
+                        # Reserved seating: free the exact seat(s) bound to this
+                        # ticket instead of bumping a numeric counter.
+                        await asyncio.to_thread(release_seats_for_ticket, valid_date, tid)
+                    else:
+                        await asyncio.to_thread(increment_availability, valid_date, 1)
                     seat_released = True
                     # A sale is logged at creation for every dated seat (paid or
                     # not), so reverse the stats whenever we release that seat.
