@@ -795,6 +795,21 @@ HTML;
                     </form>
                 </section>
             </div>
+
+            <!-- Box-office price categories -->
+            <div class="card" style="margin-top: 1.5rem;">
+                <header>
+                    <h2>Kassen-Preiskategorien (Abendkasse)</h2>
+                    <p class="text-muted-foreground text-sm">Zusätzliche Preise neben „Normal“ (= Preis des Termins bzw. Sitzplatzes), z.&nbsp;B. Ermäßigt, Kind oder Freikarte. Erscheinen in TicketFlow als eigene Kacheln.</p>
+                </header>
+                <section>
+                    <div id="boCatList" class="grid gap-3"></div>
+                    <div class="flex flex-wrap gap-3" style="margin-top: 1rem;">
+                        <button type="button" class="btn-outline" id="boCatAdd">+ Kategorie</button>
+                        <button type="button" class="btn-primary" id="boCatSave">Kategorien speichern</button>
+                    </div>
+                </section>
+            </div>
         </div>
 
         <!-- Manage Days -->
@@ -1829,23 +1844,10 @@ HTML;
                 contact_email: document.getElementById('contactEmail').value,
                 app_domain: document.getElementById('appDomain').value.trim(),
                 store_lock: document.getElementById('storeLock').checked,
-                payment_methods: document.getElementById('paymentMethods').value,
-                dates: {}
+                payment_methods: document.getElementById('paymentMethods').value
+                // `dates` deliberately omitted: the backend keeps the stored
+                // dates, so this form can't revert live availability/seating.
             };
-            <?php if ($shows) {
-                foreach ($shows["dates"] as $id => $d): ?>
-                    data.dates["<?php echo $id; ?>"] = {
-                        date: "<?php echo $d[
-                            "date"
-                        ]; ?>", time: "<?php echo $d["time"]; ?>", tickets: <?php echo $d[
-                                "tickets"
-                            ]; ?>, tickets_available: <?php echo $d[
-                                 "tickets_available"
-                             ]; ?>, price: "<?php echo $d["price"]; ?>", location: "<?php echo htmlspecialchars($d["location"] ?? "", ENT_QUOTES); ?>"
-                    };
-                <?php endforeach;
-                ;
-            } ?>
 
             fetch('admin-api-proxy.php?endpoint=show_edit', {
                 method: 'POST',
@@ -1868,6 +1870,61 @@ HTML;
         });
 
         
+        // ---- box-office price categories ----
+        (function () {
+            const list = document.getElementById('boCatList');
+            if (!list) return;
+            let cats = <?php echo json_encode(array_values($shows['boxoffice_categories'] ?? []), JSON_HEX_TAG | JSON_HEX_AMP); ?>;
+            const MODES = { fixed: 'Fester Preis (€)', minus: 'Abzug vom Normalpreis (€)', percent: 'Rabatt (%)' };
+            function render() {
+                list.innerHTML = '';
+                if (!cats.length) {
+                    list.innerHTML = '<p class="text-muted-foreground text-sm">Keine Kategorien – an der Kasse gibt es nur „Normal“.</p>';
+                }
+                cats.forEach((c, i) => {
+                    const row = document.createElement('div');
+                    row.className = 'grid gap-2 items-end';
+                    row.style.gridTemplateColumns = 'minmax(0,2fr) minmax(0,2fr) minmax(0,1fr) auto';
+                    row.innerHTML =
+                        '<div class="grid gap-1"><label class="label text-xs">Name</label><input type="text" class="input" data-k="name" maxlength="40"></div>' +
+                        '<div class="grid gap-1"><label class="label text-xs">Preisregel</label><select class="select" data-k="mode">' +
+                        Object.entries(MODES).map(([k, v]) => '<option value="' + k + '">' + v + '</option>').join('') + '</select></div>' +
+                        '<div class="grid gap-1"><label class="label text-xs">Wert</label><input type="number" class="input" data-k="value" min="0" step="0.01"></div>' +
+                        '<button type="button" class="btn-destructive" title="Entfernen" aria-label="Entfernen">✕</button>';
+                    row.querySelector('[data-k=name]').value = c.name || '';
+                    row.querySelector('[data-k=mode]').value = c.mode || 'fixed';
+                    row.querySelector('[data-k=value]').value = c.value ?? 0;
+                    row.querySelectorAll('[data-k]').forEach(el => el.addEventListener('input', () => {
+                        cats[i][el.dataset.k] = el.dataset.k === 'value' ? parseFloat(el.value) || 0 : el.value;
+                    }));
+                    row.querySelector('button').addEventListener('click', () => { cats.splice(i, 1); render(); });
+                    list.appendChild(row);
+                });
+            }
+            document.getElementById('boCatAdd').addEventListener('click', () => {
+                cats.push({ id: 'c' + Date.now().toString(36), name: '', mode: 'minus', value: 0 });
+                render();
+                list.querySelector('.grid:last-child input')?.focus();
+            });
+            document.getElementById('boCatSave').addEventListener('click', async (e) => {
+                const btn = e.currentTarget;
+                const clean = cats.filter(c => String(c.name || '').trim());
+                btn.disabled = true;
+                try {
+                    const r = await fetch('admin-api-proxy.php?endpoint=show_edit', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+                        body: JSON.stringify({ boxoffice_categories: clean })
+                    });
+                    const res = await r.json();
+                    if (res.status === 'success') { cats = clean; render(); showToast('Kategorien gespeichert'); }
+                    else showToast('Fehler: ' + (res.message || 'Unbekannt'), 'error');
+                } catch (err) { showToast('Netzwerkfehler', 'error'); }
+                btn.disabled = false;
+            });
+            render();
+        })();
+
         document.getElementById('addDayForm')?.addEventListener('submit', function (e) {
             e.preventDefault();
             const data = {

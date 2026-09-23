@@ -1,6 +1,7 @@
 import quart
 import config.conf as config
 from assets.data import load_show, save_show, location_capacity, seat_occupancy
+from assets.boxoffice import normalize_categories
 from reds_simple_logger import Logger
 import os
 import hmac
@@ -66,6 +67,12 @@ def edit_show(app=quart.Quart):
 
             if "locations" in data:
                 show["locations"] = data["locations"]
+
+            # Box-office price categories (Ermäßigt, Kind, Freikarte, ...).
+            if "boxoffice_categories" in data:
+                show["boxoffice_categories"] = normalize_categories(
+                    data["boxoffice_categories"]
+                )
 
             if "screens" in data:
                 show["screens"] = data["screens"]

@@ -13,8 +13,10 @@ from assets.data import (
     bind_seats,
     release_seats_for_ticket,
 )
-from assets.stats import log_ticket_sale, log_ticket_refund
-from assets.timeutil import local_now
+from assets.data import log_sale
+from assets.stats import log_ticket_refund
+from assets.timeutil import local_now, today_iso
+from assets.boxoffice import _seat_base_prices
 import asyncio
 import os
 import re
@@ -657,7 +659,20 @@ def create_ticket(app=quart.Quart):
             all_tids: List[str] = []
             try:
                 price_per_ticket = float(date["price"])
-                amount = price_per_ticket * sale_count
+                # Per-ticket price actually charged: seated dates use each
+                # seat's category price (same source stripe-intent.php bills),
+                # general admission the date price.
+                if seated:
+                    seat_prices = await asyncio.to_thread(
+                        _seat_base_prices, location_id, price_per_ticket
+                    )
+                    ticket_prices = [
+                        seat_prices.get(s, price_per_ticket) for s in seat_ids
+                    ]
+                    amount = round(sum(ticket_prices), 2)
+                else:
+                    ticket_prices = [price_per_ticket] * total_people
+                    amount = price_per_ticket * sale_count
 
                 # Pre-generate an id for every attendee (main + add-people) so
                 # seats can be bound to their tickets before anything persists.
@@ -712,7 +727,7 @@ def create_ticket(app=quart.Quart):
                             409,
                         )
 
-                log_ticket_sale(valid_date, sale_count, price_per_ticket)
+                await asyncio.to_thread(log_sale, today_iso(), sale_count, amount)
 
                 created_tids: List[str] = []
 
@@ -740,6 +755,8 @@ def create_ticket(app=quart.Quart):
                     "seat_label": sa.get("seat_label"),
                     "location": location_id if seated else None,
                     "lang": lang,
+                    "price": ticket_prices[0],
+                    "created_at": local_now().isoformat(timespec="seconds"),
                 }
                 await asyncio.to_thread(save_tickets, main_tid, ticket)
                 created_tids.append(main_tid)
@@ -766,6 +783,8 @@ def create_ticket(app=quart.Quart):
                         "seat_label": sa.get("seat_label"),
                         "location": location_id if seated else None,
                         "lang": lang,
+                        "price": ticket_prices[idx + 1] if idx + 1 < len(ticket_prices) else price_per_ticket,
+                        "created_at": local_now().isoformat(timespec="seconds"),
                     }
                     await asyncio.to_thread(save_tickets, tid, ticket)
                     created_tids.append(tid)
@@ -819,170 +838,6 @@ def create_ticket(app=quart.Quart):
         except Exception as e:
             print("Error:", str(e))
             return quart.jsonify({"status": "error", "message": str(e)}), 500
-
-    @app.route("/api/ticketflow/create", methods=["POST"])   # type: ignore
-    async def create_ticket_flow():
-        if not _authorized():
-            return quart.jsonify({"status": "error", "message": "Unauthorized"}), 401
-
-        data: dict = await quart.request.get_json()
-        print(data)
-
-        
-        paid: bool = data.get("paid", False)
-        valid_date_input: Optional[str] = data.get("valid_date")
-        t_type: str = data.get("type", "visitor")  
-        first_name_input: Optional[str] = data.get("first_name", "").strip()
-        last_name_input: Optional[str] = data.get("last_name", "").strip()
-        email_input: Optional[str] = (data.get("email") or "").strip()
-        tickets_input: Optional[int] = data.get("tickets", 1)  
-
-        
-        valid_date: str = valid_date_input if valid_date_input else ""
-        first_name: str = first_name_input if first_name_input else "Unknown"
-        last_name: str = last_name_input if last_name_input else "Unknown"
-        email: Optional[str] = email_input if email_input else None
-        try:
-            tickets: int = int(tickets_input) if tickets_input else 1
-        except (TypeError, ValueError):
-            return (
-                quart.jsonify({"status": "error", "message": "Invalid ticket quantity"}),
-                400,
-            )
-        # Guard against zero/negative quantities that would otherwise
-        # *increase* the available count (oversell) below.
-        if tickets < 1:
-            return (
-                quart.jsonify({"status": "error", "message": "Invalid ticket quantity"}),
-                400,
-            )
-
-
-        # Whether we committed a seat reservation that must be rolled back if
-        # the rest of the flow fails (kept False for admin/vip/Unlimited).
-        reserved = False
-        if not valid_date or valid_date.strip() == "":
-            if t_type not in ("admin", "vip"):
-                return (
-                    quart.jsonify(
-                        {
-                            "status": "error",
-                            "message": "Valid date is required for this ticket type",
-                        }
-                    ),
-                    400,
-                )
-            valid_date = "Unlimited"
-        else:
-            date_info:dict = load_date(valid_date)
-            if t_type not in ("admin", "vip"):
-                if not date_info:
-                    return (
-                        quart.jsonify(
-                            {"status": "error", "message": "Invalid date provided"}
-                        ),
-                        400,
-                    )
-                # Atomically reserve the seats to prevent concurrent oversell.
-                if not await asyncio.to_thread(decrement_availability, valid_date, tickets):
-                    return (
-                        quart.jsonify(
-                            {
-                                "status": "error",
-                                "message": "Not enough tickets available",
-                            }
-                        ),
-                        409,
-                    )
-                reserved = True
-
-                price_per_ticket = float(date_info["price"])
-                log_ticket_sale(valid_date, tickets, price_per_ticket)
-
-        # Everything after the (committed) seat reservation must give the seats
-        # back if it throws, otherwise capacity leaks with no ticket issued.
-        try:
-            raw_tid = data.get("tid")
-            if raw_tid is None or str(raw_tid).strip() == "":
-                tid = generate_ticket_id(valid_date)
-            else:
-                tid = str(raw_tid).strip()
-                # Refuse to overwrite an existing ticket via a client-supplied id
-                # (would otherwise allow forging/clobbering tickets, incl. admin/vip).
-                if await asyncio.to_thread(load_ticket_id, tid) is not None:
-                    if reserved:
-                        await asyncio.to_thread(release_availability, valid_date, tickets)
-                    return (
-                        quart.jsonify(
-                            {"status": "error", "message": "Ticket ID already exists"}
-                        ),
-                        409,
-                    )
-
-            ticket = {
-                "tid": tid,
-                "first_name": first_name,
-                "last_name": last_name,
-                "email": email,
-                "paid": paid,
-                "valid_date": valid_date,
-                "type": t_type,
-                "valid": paid,
-                "used_at": None,
-                "access_attempts": [],
-                "status": "active",
-                # Box-office sales are cash ("bar"); no Stripe intent to refund.
-                "method": str(data.get("method") or ("bar" if paid else "free")),
-                "payment_intent": None,
-                "lang": str(data.get("lang") or "en").lower(),
-            }
-            tlang = ticket["lang"]
-            print(ticket)
-            await asyncio.to_thread(save_tickets, tid, ticket)
-
-            if valid_date != "Unlimited":
-                date_info_loaded = await asyncio.to_thread(load_date, valid_date)
-                date_info: dict = date_info_loaded if date_info_loaded is not None else {"time": ""}
-            else:
-                date_info = {"time": ""}
-
-            event_time = date_info.get("time", "") if valid_date != "Unlimited" else ""
-            await asyncio.to_thread(
-                generate_ticket_pdf, tid, first_name, last_name, valid_date,
-                event_time, "simple", None, tlang,
-            )
-        except Exception:
-            # Roll back the reserved seats so a mid-flight failure does not
-            # silently burn capacity with no ticket issued, then re-raise.
-            if reserved:
-                await asyncio.to_thread(release_availability, valid_date, tickets)
-            raise
-
-        # Ticket is persisted; emailing must NOT be able to lose it. A slow or
-        # broken mail server only costs the email, never the committed ticket.
-        if email:
-            try:
-                await send_email(
-                    first_name,
-                    last_name,
-                    email,
-                    tid,
-                    paid,
-                    date=valid_date,
-                    event_time=event_time,
-                    lang=tlang,
-                )
-            except Exception as mail_err:
-                logger.error(
-                    f"Ticket {tid} created but email delivery failed: {mail_err}"
-                )
-
-        return (
-            quart.jsonify(
-                {"status": "success", "message": "Ticket created", "tid": tid}
-            ),
-            200,
-        )
 
 
 def build_combined_simple_pdf(tids: List[str]):
@@ -1223,17 +1078,22 @@ def _ticket_email_html(
           </tr>
 
           <!-- perforation seam: dashed line with two notch "ears" clipped by the
-               card's rounded overflow (the classic ticket-stub cut). -->
+               card's rounded overflow (the classic ticket-stub cut). Cells are
+               vertically centred so the half-circles sit ON the dashed line: the
+               26px ears set the row height and the height-0 dashed div lands at
+               its vertical middle, level with the circle centres. -->
           <tr>
             <td style="padding:0;line-height:0;font-size:0;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
                 <tr>
-                  <td width="12" style="line-height:0;font-size:0;">
-                    <div style="width:22px;height:22px;margin-left:-11px;border-radius:50%;background-color:#F2EFE6;"></div>
+                  <td width="13" valign="middle" style="line-height:0;font-size:0;">
+                    <div style="width:26px;height:26px;margin-left:-13px;border-radius:50%;background-color:#F2EFE6;"></div>
                   </td>
-                  <td style="border-top:2px dashed #DCD8CB;height:1px;font-size:0;line-height:0;">&nbsp;</td>
-                  <td width="12" style="line-height:0;font-size:0;" align="right">
-                    <div style="width:22px;height:22px;margin-right:-11px;border-radius:50%;background-color:#F2EFE6;"></div>
+                  <td valign="middle" style="line-height:0;font-size:0;">
+                    <div style="border-top:2px dashed #A6A192;height:0;line-height:0;font-size:0;">&nbsp;</div>
+                  </td>
+                  <td width="13" valign="middle" align="right" style="line-height:0;font-size:0;">
+                    <div style="width:26px;height:26px;margin-right:-13px;border-radius:50%;background-color:#F2EFE6;"></div>
                   </td>
                 </tr>
               </table>
@@ -1694,9 +1554,12 @@ async def _do_cancel(tid: str, actor: str, reason: str):
                 await asyncio.to_thread(increment_availability, valid_date, 1)
             seat_released = True
             # A sale is logged at creation for every dated seat (paid or not),
-            # so reverse the stats whenever we release that seat.
+            # so reverse the stats whenever we release that seat. Newer tickets
+            # store the amount actually booked; older ones fall back to the
+            # date price, which is what was logged for them.
             try:
-                price = float(date_info.get("price") or 0)
+                stored = ticket.get("price")
+                price = float(stored) if stored is not None else float(date_info.get("price") or 0)
                 await asyncio.to_thread(log_ticket_refund, 1, price)
             except Exception as se:
                 logger.error(f"Stat reversal failed for {tid}: {se}")

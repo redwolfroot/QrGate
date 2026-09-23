@@ -22,6 +22,7 @@ from assets.accounts import init_accounts, auth_routes, user_routes
 from assets.setup import init_setup, setup_routes, apply_settings_to_config, is_installed
 from assets.admin_ops import admin_ops
 from assets.seatmap import seatmap_routes
+from assets.boxoffice import boxoffice_routes
 from config import conf as config
 from assets.timeutil import local_now
 
@@ -142,6 +143,7 @@ user_routes(app)
 setup_routes(app)
 admin_ops(app)
 seatmap_routes(app)
+boxoffice_routes(app)
 logger.success("Systems enabled.")
 
 qr_gate = """

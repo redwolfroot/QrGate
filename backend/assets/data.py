@@ -173,6 +173,12 @@ def _migrate_ticket_columns() -> None:
         "seat_label": "TEXT",                # human seat label e.g. "Row B · 12"
         "location": "TEXT",                  # location id snapshot (seated dates)
         "lang": "TEXT",                      # buyer UI language at purchase (email/PDF)
+        "price": "REAL",                     # amount actually charged for this ticket
+        "category": "TEXT",                  # price category name (box office)
+        "seller": "TEXT",                    # box-office user who sold it
+        "sale_id": "TEXT",                   # groups the tickets of one sale
+        "created_at": "TEXT",                # local ISO timestamp of creation
+        "paid_at": "TEXT",                   # local ISO ts payment was taken at the box office
     }
     conn = get_db()
     try:
@@ -664,6 +670,13 @@ def _row_to_ticket(row: sqlite3.Row) -> Dict[str, Any]:
         "seat_label": row["seat_label"] if "seat_label" in keys else None,
         "location": row["location"] if "location" in keys else None,
         "lang": row["lang"] if "lang" in keys else None,
+        # Sale bookkeeping columns (added by _migrate_ticket_columns).
+        "price": row["price"] if "price" in keys else None,
+        "category": row["category"] if "category" in keys else None,
+        "seller": row["seller"] if "seller" in keys else None,
+        "sale_id": row["sale_id"] if "sale_id" in keys else None,
+        "created_at": row["created_at"] if "created_at" in keys else None,
+        "paid_at": row["paid_at"] if "paid_at" in keys else None,
     }
 
 
@@ -696,64 +709,94 @@ def load_ticket_id(tid: str) -> Optional[Dict]:
     return _row_to_ticket(row)
 
 
-def save_tickets(tid: str, new_ticket: dict) -> None:
-    """Upsert one ticket. access_attempts (a list) is serialized to JSON text."""
+_TICKET_UPSERT_SQL = """
+    INSERT INTO tickets (
+        tid, first_name, last_name, email, paid, valid_date,
+        type, valid, used_at, access_attempts,
+        status, payment_intent, refund_id, method,
+        seat_id, seat_label, location, lang,
+        price, category, seller, sale_id, created_at, paid_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+              ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(tid) DO UPDATE SET
+        first_name=excluded.first_name,
+        last_name=excluded.last_name,
+        email=excluded.email,
+        paid=excluded.paid,
+        valid_date=excluded.valid_date,
+        type=excluded.type,
+        valid=excluded.valid,
+        used_at=excluded.used_at,
+        access_attempts=excluded.access_attempts,
+        status=excluded.status,
+        payment_intent=excluded.payment_intent,
+        refund_id=excluded.refund_id,
+        method=excluded.method,
+        seat_id=excluded.seat_id,
+        seat_label=excluded.seat_label,
+        location=excluded.location,
+        lang=excluded.lang,
+        price=excluded.price,
+        category=excluded.category,
+        seller=excluded.seller,
+        sale_id=excluded.sale_id,
+        created_at=excluded.created_at,
+        paid_at=excluded.paid_at
+"""
+
+
+def _ticket_params(tid: str, new_ticket: dict) -> tuple:
     attempts = new_ticket.get("access_attempts", [])
     if not isinstance(attempts, list):
         attempts = []
-    attempts_json = json.dumps(attempts, ensure_ascii=False)
+    return (
+        tid,
+        new_ticket.get("first_name"),
+        new_ticket.get("last_name"),
+        new_ticket.get("email"),
+        1 if new_ticket.get("paid") else 0,
+        new_ticket.get("valid_date"),
+        new_ticket.get("type"),
+        1 if new_ticket.get("valid") else 0,
+        new_ticket.get("used_at"),
+        json.dumps(attempts, ensure_ascii=False),
+        new_ticket.get("status") or "active",
+        new_ticket.get("payment_intent"),
+        new_ticket.get("refund_id"),
+        new_ticket.get("method"),
+        new_ticket.get("seat_id"),
+        new_ticket.get("seat_label"),
+        new_ticket.get("location"),
+        new_ticket.get("lang"),
+        new_ticket.get("price"),
+        new_ticket.get("category"),
+        new_ticket.get("seller"),
+        new_ticket.get("sale_id"),
+        new_ticket.get("created_at"),
+        new_ticket.get("paid_at"),
+    )
 
+
+def save_tickets(tid: str, new_ticket: dict) -> None:
+    """Upsert one ticket. access_attempts (a list) is serialized to JSON text."""
     conn = get_db()
     try:
-        conn.execute(
-            """
-            INSERT INTO tickets (
-                tid, first_name, last_name, email, paid, valid_date,
-                type, valid, used_at, access_attempts,
-                status, payment_intent, refund_id, method,
-                seat_id, seat_label, location, lang
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(tid) DO UPDATE SET
-                first_name=excluded.first_name,
-                last_name=excluded.last_name,
-                email=excluded.email,
-                paid=excluded.paid,
-                valid_date=excluded.valid_date,
-                type=excluded.type,
-                valid=excluded.valid,
-                used_at=excluded.used_at,
-                access_attempts=excluded.access_attempts,
-                status=excluded.status,
-                payment_intent=excluded.payment_intent,
-                refund_id=excluded.refund_id,
-                method=excluded.method,
-                seat_id=excluded.seat_id,
-                seat_label=excluded.seat_label,
-                location=excluded.location,
-                lang=excluded.lang
-            """,
-            (
-                tid,
-                new_ticket.get("first_name"),
-                new_ticket.get("last_name"),
-                new_ticket.get("email"),
-                1 if new_ticket.get("paid") else 0,
-                new_ticket.get("valid_date"),
-                new_ticket.get("type"),
-                1 if new_ticket.get("valid") else 0,
-                new_ticket.get("used_at"),
-                attempts_json,
-                new_ticket.get("status") or "active",
-                new_ticket.get("payment_intent"),
-                new_ticket.get("refund_id"),
-                new_ticket.get("method"),
-                new_ticket.get("seat_id"),
-                new_ticket.get("seat_label"),
-                new_ticket.get("location"),
-                new_ticket.get("lang"),
-            ),
-        )
+        conn.execute(_TICKET_UPSERT_SQL, _ticket_params(tid, new_ticket))
         conn.commit()
+    finally:
+        conn.close()
+
+
+def save_tickets_bulk(tickets: list) -> None:
+    """Insert several tickets in ONE transaction: either all of them persist or
+    none do (a box-office sale must never be half-written)."""
+    conn = get_db()
+    try:
+        with conn:
+            conn.executemany(
+                _TICKET_UPSERT_SQL,
+                [_ticket_params(t["tid"], t) for t in tickets],
+            )
     finally:
         conn.close()
 
@@ -944,6 +987,51 @@ def recent_checkins(limit: int = 20) -> list:
             }
         )
     return result
+
+
+def boxoffice_sales(day: str, seller: Optional[str] = None) -> list:
+    """Tickets paid at the box office on local calendar day `day` (YYYY-MM-DD):
+    fresh sales and collected reservations alike, optionally only those taken
+    by `seller`, oldest first. paid_at is a local ISO timestamp, so a prefix
+    match selects the day."""
+    sql = "SELECT * FROM tickets WHERE sale_id IS NOT NULL AND paid_at LIKE ?"
+    args: list = [f"{day}%"]
+    if seller:
+        sql += " AND seller = ?"
+        args.append(seller)
+    sql += " ORDER BY paid_at, tid"
+    conn = get_db()
+    try:
+        rows = conn.execute(sql, args).fetchall()
+    finally:
+        conn.close()
+    return [_row_to_ticket(r) for r in rows]
+
+
+def search_tickets(q: str, limit: int = 25) -> list:
+    """Find tickets by (partial) id or by first/last name, newest first."""
+    q = (q or "").strip()
+    if not q:
+        return []
+    like = f"%{q}%"
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """
+            SELECT * FROM tickets
+             WHERE tid LIKE ? COLLATE NOCASE
+                OR first_name LIKE ? COLLATE NOCASE
+                OR last_name LIKE ? COLLATE NOCASE
+                OR (first_name || ' ' || last_name) LIKE ? COLLATE NOCASE
+                OR email LIKE ? COLLATE NOCASE
+             ORDER BY COALESCE(created_at, '') DESC, tid DESC
+             LIMIT ?
+            """,
+            (like, like, like, like, like, int(limit)),
+        ).fetchall()
+    finally:
+        conn.close()
+    return [_row_to_ticket(r) for r in rows]
 
 
 def log_sale(date: str, count: int, income: float) -> None:
@@ -1198,10 +1286,12 @@ def bind_seats(date_key: str, mapping: Dict[str, str], hold_token: Optional[str]
         taken = []
         for r in rows:
             # A seat already sold, or actively held by a DIFFERENT checkout,
-            # cannot be claimed by this order.
+            # cannot be claimed by this order. Without a token of our own (box
+            # office) every active hold belongs to someone else; expired holds
+            # were swept above.
             if r["status"] == "sold":
                 taken.append(r["seat_id"])
-            elif r["status"] == "held" and hold_token and r["hold_token"] != hold_token:
+            elif r["status"] == "held" and r["hold_token"] != hold_token:
                 taken.append(r["seat_id"])
         if taken:
             conn.rollback()

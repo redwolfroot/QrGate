@@ -20,7 +20,7 @@ docker run -d --name qrgate -p 8080:80 \
   redwolf2467/qrgate
 ```
 
-Open <http://localhost:8080> → you're redirected to the **`/install` wizard**, which generates your API secret and walks you through SMTP, the first event and the admin password. Details: [Single All-in-One Container](#single-all-in-one-container). Want two independently restartable containers instead? See [Quick Start with Docker](#quick-start-with-docker).
+Open <http://localhost:8080> → you're redirected to the `/install` **wizard**, which generates your API secret and walks you through SMTP, the first event and the admin password. Details: [Single All-in-One Container](#single-all-in-one-container). Want two independently restartable containers instead? See [Quick Start with Docker](#quick-start-with-docker).
 
 ## Overview
 
@@ -49,6 +49,7 @@ QrGate is a comprehensive system for managing events, tickets, and access contro
 - **Rate Limiting & Signed Links**: In-process rate limiting on sensitive endpoints, HMAC-signed ticket PDF links, plus honeypot and server-side consent enforcement on bookings
 
 ## Screenshots
+
 <img width="2560" height="1492" alt="image" src="https://github.com/user-attachments/assets/d7e8562a-fd46-45d8-a389-45bc17bfee2e" />
 <img width="2560" height="1492" alt="image" src="https://github.com/user-attachments/assets/9dc34513-e245-4569-acdc-d3ec11d130da" />
 <img width="1840" height="1263" alt="image" src="https://github.com/user-attachments/assets/e013fbab-2cf3-4f2a-aeb7-dfbfa23a63f7" />
@@ -56,15 +57,13 @@ QrGate is a comprehensive system for managing events, tickets, and access contro
 <img width="585" height="1266" alt="IMG_8895" src="https://github.com/user-attachments/assets/45bad24d-b2eb-45c1-b5b6-9da6a7c2360b" />
 <img width="585" height="1266" alt="IMG_8894" src="https://github.com/user-attachments/assets/c383987e-23ac-4e6b-b2a1-f196bca5a937" />
 
-
-
 ## Installation
 
 There are three ways to run QrGate:
 
-- **[Quick Start with Docker](#quick-start-with-docker)** — recommended. One command brings up both containers on a shared network.
-- **[Single All-in-One Container](#single-all-in-one-container)** — backend, PHP and nginx in one image; publish the whole project as a single Docker stack.
-- **[Manual Installation](#manual-installation)** — run the backend and frontend directly on the host.
+- [**Quick Start with Docker**](#quick-start-with-docker) — recommended. One command brings up both containers on a shared network.
+- [**Single All-in-One Container**](#single-all-in-one-container) — backend, PHP and nginx in one image; publish the whole project as a single Docker stack.
+- [**Manual Installation**](#manual-installation) — run the backend and frontend directly on the host.
 
 ## Quick Start with Docker
 
@@ -88,6 +87,7 @@ The repository ships a full Docker setup: a Python backend container and an ngin
    ```bash
    cp .env.example .env
    ```
+
    Edit `.env` and set real secrets. At minimum change `QRGATE_AUTH_KEY` (shared by backend and frontend — they must match) and the role passwords. Generate a strong key with:
 
    ```bash
@@ -98,7 +98,7 @@ The repository ships a full Docker setup: a Python backend container and an ngin
    ```bash
    docker compose up -d --build
    ```
-4. **Open the app:** the frontend is published on [http://localhost:8080](http://localhost:8080). Change the host port in `docker-compose.yml` (`ports: "8080:80"`) if needed, and put a reverse proxy with TLS in front for production.
+4. **Open the app:** the frontend is published on <http://localhost:8080>. Change the host port in `docker-compose.yml` (`ports: "8080:80"`) if needed, and put a reverse proxy with TLS in front for production.
 5. **Run the setup wizard** — see below.
 
 ## First-Run Setup Wizard
@@ -121,19 +121,19 @@ Open `/install` and the wizard walks you through:
 2. **First event** — organizer name, event title/subtitle, first date, ticket count, price and payment methods.
 3. **Admin account** — the password for the `admin` login (min. 8 characters).
 
-Until setup is finished, **every page automatically redirects to `/install`**. After completing the wizard the system is marked as installed, the redirect stops, and you are sent to the admin login. Ticket sales stay **locked** until you deliberately open them from the admin dashboard.
+Until setup is finished, **every page automatically redirects to** `/install`. After completing the wizard the system is marked as installed, the redirect stops, and you are sent to the admin login. Ticket sales stay **locked** until you deliberately open them from the admin dashboard.
 
 The wizard writes SMTP settings and the install flag to the backend's `settings` table (persisted in the `qrgate_data` volume), creates the first event, and sets the admin password — no config files need to be edited by hand. The `/api/setup/complete` endpoint locks itself once installation is done.
 
 ### What the Docker setup contains
 
-| File | Purpose |
-|------|---------|
-| `docker-compose.yml` | Orchestrates both containers, the shared `qrgate` network, and named volumes |
-| `.env.example` | Template for all configuration/secrets injected at runtime |
-| `backend/Dockerfile` | Python 3.12 image, installs `backend/requirements.txt`, runs `main.py` |
-| `frontend/Dockerfile` | Multi-stage: Composer deps + nginx/PHP-FPM runtime via supervisor |
-| `frontend/docker/` | nginx, php-fpm, supervisor and PHP ini config |
+| File                  | Purpose                                                                      |
+|-----------------------|------------------------------------------------------------------------------|
+| `docker-compose.yml`  | Orchestrates both containers, the shared `qrgate` network, and named volumes |
+| `.env.example`        | Template for all configuration/secrets injected at runtime                   |
+| `backend/Dockerfile`  | Python 3.12 image, installs `backend/requirements.txt`, runs `main.py`       |
+| `frontend/Dockerfile` | Multi-stage: Composer deps + nginx/PHP-FPM runtime via supervisor            |
+| `frontend/docker/`    | nginx, php-fpm, supervisor and PHP ini config                                |
 
 **Persistence:** ticket/show/stats data (`backend/data`) and generated PDFs/QR codes (`backend/codes`) are stored in the named volumes `qrgate_data` and `qrgate_codes`, so they survive container rebuilds.
 
@@ -169,7 +169,7 @@ docker run -d --name qrgate -p 8080:80 \
 
 > `QRGATE_WEB_PORT` is only used to print the correct setup link in the console on first start (the container can't see the host's `-p` mapping). Set it to whatever host port you published. The console prints the server's public IP automatically.
 
-Open <http://localhost:8080> → it redirects to the **`/install` wizard**. There you configure SMTP, the first event, the admin password and — in the **Security** step — your API secret:
+Open <http://localhost:8080> → it redirects to the `/install` **wizard**. There you configure SMTP, the first event, the admin password and — in the **Security** step — your API secret:
 
 - a strong random key is **pre-generated** in your browser, with a **↻ Regenerate** button;
 - on **Finish & restart** the key is saved to a shared key file, the backend **restarts automatically**, and the page shows a loader that **reconnects on its own** and sends you to the admin login.
@@ -188,7 +188,6 @@ docker compose -f docker-compose.single.yml up -d --build
 …or with plain `docker run -e QRGATE_AUTH_KEY=… -e QRGATE_ADMIN_PASSWORD=… …`. Any `QRGATE_*` from [`.env.example`](.env.example) works; a value set this way is used as the default until you change it in the wizard. The container derives the frontend's API key from `QRGATE_AUTH_KEY`, so the secret is only set once. Then follow the [setup wizard](#first-run-setup-wizard).
 
 > Note: online key rotation in the wizard relies on a key file shared between backend and frontend, so it applies to the **single-container** setups. In the two-container [`docker-compose.yml`](docker-compose.yml), set the secret via `QRGATE_AUTH_KEY` instead.
-
 
 ## Manual Installation
 
@@ -250,7 +249,7 @@ docker compose -f docker-compose.single.yml up -d --build
    ```php
    define('API_BASE_URL', 'https://your-backend-url.com');
    define('API_KEY', 'YourSecureRandomKeyHere');  // Must match backend auth_key
-
+   
    // Change these passwords in production!
    define('ADMIN_PASSWORD', 'your_secure_admin_password');
    define('TICKETFLOW_PASSWORD', 'your_secure_ticketflow_password');
@@ -353,32 +352,36 @@ The admin panel provides the following features:
 
 All `/api/*` routes require the `Authorization: {auth_key}` header, except the public ones noted below. This is a selection of the most common routes; see the modules in `backend/assets/` for the full set.
 
-| Route | Method | Purpose |
-|-------|--------|---------|
-| `/api/ticket/create` | POST | Create a ticket (public buyer flow) |
-| `/api/ticketflow/create` | POST | Box-office ticket sale |
-| `/api/ticket/get` | GET/POST | Look up a ticket by id |
-| `/api/ticket/edit` | POST | Edit a ticket |
-| `/api/ticket/cancel` | POST | Cancel ticket (+ Stripe refund) |
-| `/api/ticket/self-cancel` | POST | Buyer self-cancel from the email link (public, gated by per-ticket HMAC token; 24h deadline; auto refund) |
-| `/api/ticket/validate` | GET/POST | Validate/scan a ticket at the door |
-| `/api/stats/checkins` | GET | Live per-date check-in counts + latest scans (admin dashboard) |
-| `/codes/pdf?tid=X&token=Y` | GET | Download ticket PDF (gated by per-ticket HMAC token, not the auth key; `?tids=&tokens=` for batches) |
-| `/api/show/get` | GET/POST | Full event config |
-| `/api/show/edit` | POST | Update event config |
-| `/api/seatmap/get` | GET | Get a location's seat map layout |
-| `/api/seatmap/save` | POST | Save a location's seat map layout |
-| `/api/seatmap/availability` | GET/POST | Seat states (free/held/sold) for a date |
-| `/api/seat/hold` \| `/api/seat/release` | POST | Atomic seat hold / release (10-min TTL) |
-| `/api/show/get/stripe_pub_key` | GET | Stripe publishable key (public) |
-| `/api/stats` | GET | Sales/income statistics |
-| `/api/vote` | POST | Submit an audience rating |
-| `/api/auth/login` | POST | User account login |
-| `/api/users/list` \| `/create` \| `/update` \| `/delete` | GET/POST | Manage user accounts |
-| `/api/setup/status` | GET | Install state (public) |
-| `/api/setup/complete` | POST | Run the first-run wizard (locks after install) |
-| `/api/admin/backup` | GET | Download a SQLite backup |
-| `/api/admin/wipe-data` \| `/reinstall` \| `/factory-reset` | POST | Danger-zone maintenance |
+| Route                                                     | Method   | Purpose                                                                                                   |
+|-----------------------------------------------------------|----------|-----------------------------------------------------------------------------------------------------------|
+| `/api/ticket/create`                                      | POST     | Create a ticket (public buyer flow)                                                                       |
+| `/api/boxoffice/sell`                                     | POST     | Box-office sale: cart of price categories, cash/card, atomic                                              |
+| `/api/boxoffice/sales`                                    | POST     | Tickets paid at the box office on a day (per register)                                                    |
+| `/api/boxoffice/search`                                   | POST     | Find tickets by ID, name or email                                                                         |
+| `/api/boxoffice/collect`                                  | POST     | Take payment for a reserved (unpaid) ticket at the counter                                                |
+| `/api/boxoffice/void`                                     | POST     | Cancel several tickets (e.g. undo a sale)                                                                 |
+| `/api/ticket/get`                                         | GET/POST | Look up a ticket by id                                                                                    |
+| `/api/ticket/edit`                                        | POST     | Edit a ticket                                                                                             |
+| `/api/ticket/cancel`                                      | POST     | Cancel ticket (+ Stripe refund)                                                                           |
+| `/api/ticket/self-cancel`                                 | POST     | Buyer self-cancel from the email link (public, gated by per-ticket HMAC token; 24h deadline; auto refund) |
+| `/api/ticket/validate`                                    | GET/POST | Validate/scan a ticket at the door                                                                        |
+| `/api/stats/checkins`                                     | GET      | Live per-date check-in counts + latest scans (admin dashboard)                                            |
+| `/codes/pdf?tid=X&token=Y`                                | GET      | Download ticket PDF (gated by per-ticket HMAC token, not the auth key; `?tids=&tokens=` for batches)      |
+| `/api/show/get`                                           | GET/POST | Full event config                                                                                         |
+| `/api/show/edit`                                          | POST     | Update event config                                                                                       |
+| `/api/seatmap/get`                                        | GET      | Get a location's seat map layout                                                                          |
+| `/api/seatmap/save`                                       | POST     | Save a location's seat map layout                                                                         |
+| `/api/seatmap/availability`                               | GET/POST | Seat states (free/held/sold) for a date                                                                   |
+| `/api/seat/hold` \| `/api/seat/release`                   | POST     | Atomic seat hold / release (10-min TTL)                                                                   |
+| `/api/show/get/stripe_pub_key`                            | GET      | Stripe publishable key (public)                                                                           |
+| `/api/stats`                                              | GET      | Sales/income statistics                                                                                   |
+| `/api/vote`                                               | POST     | Submit an audience rating                                                                                 |
+| `/api/auth/login`                                         | POST     | User account login                                                                                        |
+| `/api/users/list` \| `/create` | `/update` | `/delete`    | GET/POST | Manage user accounts                                                                                      |
+| `/api/setup/status`                                       | GET      | Install state (public)                                                                                    |
+| `/api/setup/complete`                                     | POST     | Run the first-run wizard (locks after install)                                                            |
+| `/api/admin/backup`                                       | GET      | Download a SQLite backup                                                                                  |
+| `/api/admin/wipe-data` \| `/reinstall` | `/factory-reset` | POST     | Danger-zone maintenance                                                                                   |
 
 ## Configuration
 
@@ -396,20 +399,20 @@ Frontend configuration is done in `frontend/config.php`. Here you can adjust set
 
 For containerized or 12-factor deployments, every config value can be overridden with a `QRGATE_*` environment variable instead of editing the config files. When a variable is unset, the in-file default is used. This is how the Docker setup is configured — see [`.env.example`](.env.example) for the full list.
 
-| Variable | Applies to | Maps to |
-|----------|-----------|---------|
-| `QRGATE_AUTH_KEY` | backend + frontend | `Auth.auth_key` / `API_KEY` (must match) |
-| `QRGATE_API_BASE_URL` | frontend | `API_BASE_URL` (set to `http://backend:1654/` in Docker) |
-| `QRGATE_BACKEND_URL` | backend | `API.backend_url` |
-| `QRGATE_FRONTEND_ORIGIN` | backend | `API.frontend_origin` (CORS) |
-| `QRGATE_ORIGIN_URL` | frontend | `ORIGIN_URL` |
-| `QRGATE_TIMEZONE` | backend | `config.timezone` (IANA, default `Europe/Berlin`) |
-| `QRGATE_SETUP_URL` | backend | Install-wizard link printed in the logs |
-| `QRGATE_WEB_PORT` | backend | Host port used only to print the correct setup link (single-container) |
-| `QRGATE_PORT` | backend | `API.port` (default `1654`) |
-| `QRGATE_ADMIN_USERNAMES` / `QRGATE_TICKETFLOW_USERNAMES` / `QRGATE_HANDHELD_USERNAMES` | backend | role usernames for the legacy shared-password login |
-| `QRGATE_ADMIN_PASSWORD` / `QRGATE_TICKETFLOW_PASSWORD` / `QRGATE_HANDHELD_PASSWORD` | backend + frontend | role passwords |
-| `QRGATE_SMTP_SERVER` / `QRGATE_SMTP_PORT` / `QRGATE_SMTP_USER` / `QRGATE_SMTP_PASSWORD` | backend | `Mail.*` |
+| Variable                                                                                | Applies to         | Maps to                                                                |
+|-----------------------------------------------------------------------------------------|--------------------|------------------------------------------------------------------------|
+| `QRGATE_AUTH_KEY`                                                                       | backend + frontend | `Auth.auth_key` / `API_KEY` (must match)                               |
+| `QRGATE_API_BASE_URL`                                                                   | frontend           | `API_BASE_URL` (set to `http://backend:1654/` in Docker)               |
+| `QRGATE_BACKEND_URL`                                                                    | backend            | `API.backend_url`                                                      |
+| `QRGATE_FRONTEND_ORIGIN`                                                                | backend            | `API.frontend_origin` (CORS)                                           |
+| `QRGATE_ORIGIN_URL`                                                                     | frontend           | `ORIGIN_URL`                                                           |
+| `QRGATE_TIMEZONE`                                                                       | backend            | `config.timezone` (IANA, default `Europe/Berlin`)                      |
+| `QRGATE_SETUP_URL`                                                                      | backend            | Install-wizard link printed in the logs                                |
+| `QRGATE_WEB_PORT`                                                                       | backend            | Host port used only to print the correct setup link (single-container) |
+| `QRGATE_PORT`                                                                           | backend            | `API.port` (default `1654`)                                            |
+| `QRGATE_ADMIN_USERNAMES` / `QRGATE_TICKETFLOW_USERNAMES` / `QRGATE_HANDHELD_USERNAMES`  | backend            | role usernames for the legacy shared-password login                    |
+| `QRGATE_ADMIN_PASSWORD` / `QRGATE_TICKETFLOW_PASSWORD` / `QRGATE_HANDHELD_PASSWORD`     | backend + frontend | role passwords                                                         |
+| `QRGATE_SMTP_SERVER` / `QRGATE_SMTP_PORT` / `QRGATE_SMTP_USER` / `QRGATE_SMTP_PASSWORD` | backend            | `Mail.*`                                                               |
 
 ## Contributing
 
