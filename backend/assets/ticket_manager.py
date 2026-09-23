@@ -107,6 +107,21 @@ TICKET_I18N = {
             "24 hours before the event.",
         "contact": "Questions?",
         "footer": "Managed by QrGate · avocloud.net",
+        # cancellation email
+        "cx_right": "Cancellation",
+        "cx_subject": "Cancelled: your ticket for {event}, {date}",
+        "cx_chip": "Cancelled",
+        "cx_head_self": "Your cancellation is confirmed.",
+        "cx_head": "Your ticket has been cancelled.",
+        "cx_msg": "Ticket {tid} is no longer valid and its seat has been released.",
+        "cx_kicker": "Cancelled ticket",
+        "cx_refund": "Refund",
+        "cx_refund_ok": "{amount} is being refunded to your card. Depending on your bank this usually takes 5–10 business days.",
+        "cx_refund_ok_noamt": "The amount is being refunded to your card. Depending on your bank this usually takes 5–10 business days.",
+        "cx_refund_fail": "The automatic refund did not go through. Please contact the organiser so you get your money back.",
+        "cx_refund_counter": "You paid at the box office. The organiser handles the refund with you directly.",
+        "cx_refund_free": "This ticket was free, so there is nothing to refund.",
+        "cx_refund_none": "This ticket had not been paid yet, so nothing was charged.",
     },
     "de": {
         "label_NAME": "Name", "label_DATE": "Datum", "label_TIME": "Beginn",
@@ -140,6 +155,21 @@ TICKET_I18N = {
             "24 Stunden vor der Veranstaltung.",
         "contact": "Fragen?",
         "footer": "Verwaltet mit QrGate · avocloud.net",
+        # Storno-Mail
+        "cx_right": "Stornierung",
+        "cx_subject": "Storniert: dein Ticket für {event}, {date}",
+        "cx_chip": "Storniert",
+        "cx_head_self": "Deine Stornierung ist bestätigt.",
+        "cx_head": "Dein Ticket wurde storniert.",
+        "cx_msg": "Das Ticket {tid} ist nicht mehr gültig, der Platz ist wieder freigegeben.",
+        "cx_kicker": "Storniertes Ticket",
+        "cx_refund": "Erstattung",
+        "cx_refund_ok": "{amount} werden auf deine Karte zurückerstattet. Je nach Bank dauert das meist 5–10 Werktage.",
+        "cx_refund_ok_noamt": "Der Betrag wird auf deine Karte zurückerstattet. Je nach Bank dauert das meist 5–10 Werktage.",
+        "cx_refund_fail": "Die automatische Erstattung hat nicht geklappt. Bitte melde dich beim Veranstalter, damit du dein Geld zurückbekommst.",
+        "cx_refund_counter": "Du hast an der Kasse bezahlt. Die Erstattung klärt der Veranstalter direkt mit dir.",
+        "cx_refund_free": "Das Ticket war kostenlos, es gibt nichts zu erstatten.",
+        "cx_refund_none": "Das Ticket war noch nicht bezahlt, es wurde nichts abgebucht.",
     },
 }
 
@@ -573,6 +603,172 @@ MAIL_WORDMARK = "'Syne','Arial Black','Helvetica Neue',Arial,sans-serif"
 MAIL_BANNER_ASPECT = 3.2      # same crop as the PDF banner
 
 
+MAIL_ERROR = "#DC3838"
+_M = f"font-family:{MAIL_MONO};"
+
+
+def _m_label(text: str) -> str:
+    return (f'<div style="{_M}font-size:10px;font-weight:500;letter-spacing:1.4px;'
+            f'text-transform:uppercase;color:{MAIL_MUTED};margin:0 0 6px 0;">{text}</div>')
+
+
+def _m_field(label: str, value: str, extra: str = "", seat: bool = False) -> str:
+    if seat:
+        val = (f'<span style="display:inline-block;padding:5px 10px;border-radius:6px;'
+               f'background-color:{MAIL_CORAL};color:#000000;{_M}font-size:15px;'
+               f'font-weight:600;">{value}</span>')
+    else:
+        val = (f'<div style="{_M}font-size:15px;font-weight:500;line-height:1.4;'
+               f'color:{MAIL_TEXT};">{value}</div>')
+    if extra:
+        val += (f'<div style="{_M}font-size:12px;line-height:1.5;color:{MAIL_MUTED};'
+                f'margin-top:2px;">{extra}</div>')
+    return _m_label(label) + val
+
+
+def _m_grid(fields: List[str]) -> str:
+    """Details in two columns; one column on a phone (the .col rule)."""
+    rows = []
+    for i in range(0, len(fields), 2):
+        right = fields[i + 1] if i + 1 < len(fields) else ""
+        rows.append(
+            "<tr>"
+            f'<td class="col" width="50%" valign="top" style="padding:0 12px 20px 0;">{fields[i]}</td>'
+            f'<td class="col" width="50%" valign="top" style="padding:0 0 20px 12px;">{right}</td>'
+            "</tr>"
+        )
+    return ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+            f'style="border-collapse:collapse;">{"".join(rows)}</table>')
+
+
+def _m_chip(color: str, text: str) -> str:
+    return (f'<span style="display:inline-block;padding:5px 10px 5px 9px;border:1px solid {color};'
+            f'border-radius:6px;{_M}font-size:10px;font-weight:500;letter-spacing:1.4px;'
+            f'text-transform:uppercase;color:{MAIL_TEXT};">'
+            f'<span style="color:{color};">&#9679;</span>&nbsp; {text}</span>')
+
+
+def _m_details(T: dict, *, full_name: str, date_val: str, event_time: str, seat_label: str,
+               location_name: str, location_address: str, tid: str = "") -> List[str]:
+    fields = []
+    if tid:
+        fields.append(_m_field(T["tid"], tid))
+    if full_name:
+        fields.append(_m_field(T["label_NAME"], full_name))
+    if date_val:
+        fields.append(_m_field(T["label_DATE"], date_val))
+    if event_time:
+        fields.append(_m_field(T["label_TIME"], event_time))
+    fields.append(_m_field(T["label_SEAT"], seat_label or T["free_seating"], seat=bool(seat_label)))
+    if location_name or location_address:
+        fields.append(_m_field(T["label_LOCATION"], location_name or location_address,
+                               location_address if location_name else ""))
+    return fields
+
+
+def _m_event_block(T: dict, kicker: str, title: str, subtitle: str, grid: str) -> str:
+    subtitle_html = (
+        f'<div style="{_M}font-size:13px;line-height:1.5;color:{MAIL_MUTED};margin-top:6px;">'
+        f'{subtitle}</div>' if subtitle else ""
+    )
+    return f"""
+                <tr>
+                  <td class="pad" style="padding:24px 32px 6px 32px;">
+                    <div style="{_M}font-size:10px;font-weight:500;letter-spacing:1.4px;text-transform:uppercase;color:{MAIL_MUTED};"><span style="color:{MAIL_CORAL_TEXT};">//</span>&nbsp; {kicker}</div>
+                    <div style="margin-top:10px;{_M}font-size:19px;font-weight:600;line-height:1.3;color:{MAIL_TEXT};">{title}</div>
+                    {subtitle_html}
+                    <div style="height:22px;line-height:22px;font-size:0;">&nbsp;</div>
+                    {grid}
+                  </td>
+                </tr>"""
+
+
+def _m_status_block(chip: str, headline: str, text: str, border: bool = True) -> str:
+    line = f"border-bottom:1px solid {MAIL_LINE_SOFT};" if border else ""
+    return f"""
+                <tr>
+                  <td class="pad" style="padding:28px 32px 24px 32px;{line}">
+                    {chip}
+                    <h1 style="margin:16px 0 8px 0;{_M}font-size:22px;font-weight:600;line-height:1.3;color:{MAIL_TEXT};">{headline}</h1>
+                    <p style="margin:0;{_M}font-size:13px;line-height:1.6;color:{MAIL_MUTED};">{text}</p>
+                  </td>
+                </tr>"""
+
+
+def _mail_page(*, lang: str, title: str, preheader: str, event_name: str, right_label: str,
+               card: str, contact: str = "") -> str:
+    """The frame every QrGate email shares: organiser wordmark, one card on the
+    light canvas, the [>|] footer. `card` is a run of <tr> rows."""
+    T = _tx(lang)
+    contact_html = (
+        f'{T["contact"]} <a href="mailto:{contact}" style="color:{MAIL_MUTED};'
+        f'text-decoration:underline;">{contact}</a>' if contact else ""
+    )
+    return f"""\
+<!DOCTYPE html>
+<html lang="{lang}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>{title}</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Syne:wght@800&amp;display=swap" rel="stylesheet">
+  <style>
+    :root {{ color-scheme: light; supported-color-schemes: light; }}
+    body {{ margin:0; padding:0; background-color:{MAIL_CANVAS}; }}
+    a {{ color:{MAIL_CORAL_TEXT}; }}
+    @media (max-width: 620px) {{
+      .wrap {{ width:100% !important; }}
+      .pad {{ padding-left:22px !important; padding-right:22px !important; }}
+      .col {{ display:block !important; width:100% !important; padding:0 0 18px 0 !important; }}
+    }}
+  </style>
+</head>
+<body style="margin:0;padding:0;background-color:{MAIL_CANVAS};">
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:{MAIL_CANVAS};">{preheader}</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:{MAIL_CANVAS};">
+    <tr>
+      <td align="center" style="padding:28px 12px 36px 12px;">
+        <table role="presentation" class="wrap" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;">
+
+          <!-- header: organiser wordmark + // label -->
+          <tr>
+            <td style="padding:0 4px 16px 4px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+                <td valign="middle" style="font-family:{MAIL_WORDMARK};font-size:18px;font-weight:800;letter-spacing:-0.2px;text-transform:uppercase;color:{MAIL_TEXT};">{event_name}</td>
+                <td valign="middle" align="right" style="{_M}font-size:10px;font-weight:500;letter-spacing:1.4px;text-transform:uppercase;color:{MAIL_MUTED};white-space:nowrap;"><span style="color:{MAIL_CORAL_TEXT};">//</span>&nbsp; {right_label}</td>
+              </tr></table>
+            </td>
+          </tr>
+
+          <!-- the card -->
+          <tr>
+            <td style="background-color:{MAIL_SURFACE};border:1px solid {MAIL_LINE};border-radius:8px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;">
+                {card}
+              </table>
+            </td>
+          </tr>
+
+          <!-- footer -->
+          <tr>
+            <td style="padding:18px 4px 0 4px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+                <td valign="top" style="{_M}font-size:11px;line-height:1.6;color:{MAIL_FAINT};"><span style="color:{MAIL_TEXT};font-weight:600;">[&gt;<span style="color:{MAIL_CORAL_TEXT};">|</span>]</span>&nbsp; {T["footer"]}</td>
+                <td valign="top" align="right" style="{_M}font-size:11px;line-height:1.6;color:{MAIL_FAINT};">{contact_html}</td>
+              </tr></table>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+
 def _ticket_email_html(
     *,
     event_name: str,
@@ -600,56 +796,13 @@ def _ticket_email_html(
     All dynamic strings must already be HTML-escaped by the caller.
     """
     T = _tx(lang)
-    mono = f"font-family:{MAIL_MONO};"
-
-    def _label(text: str) -> str:
-        return (f'<div style="{mono}font-size:10px;font-weight:500;letter-spacing:1.4px;'
-                f'text-transform:uppercase;color:{MAIL_MUTED};margin:0 0 6px 0;">{text}</div>')
-
-    def _field(label: str, value: str, extra: str = "", seat: bool = False) -> str:
-        if seat:
-            val = (f'<span style="display:inline-block;padding:5px 10px;border-radius:6px;'
-                   f'background-color:{MAIL_CORAL};color:#000000;{mono}font-size:15px;'
-                   f'font-weight:600;">{value}</span>')
-        else:
-            val = (f'<div style="{mono}font-size:15px;font-weight:500;line-height:1.4;'
-                   f'color:{MAIL_TEXT};">{value}</div>')
-        if extra:
-            val += (f'<div style="{mono}font-size:12px;line-height:1.5;color:{MAIL_MUTED};'
-                    f'margin-top:2px;">{extra}</div>')
-        return _label(label) + val
-
-    fields = []
-    if full_name:
-        fields.append(_field(T["label_NAME"], full_name))
-    if date_val:
-        fields.append(_field(T["label_DATE"], date_val))
-    if event_time:
-        fields.append(_field(T["label_TIME"], event_time))
-    fields.append(_field(T["label_SEAT"], seat_label or T["free_seating"], seat=bool(seat_label)))
-    if location_name or location_address:
-        fields.append(_field(T["label_LOCATION"], location_name or location_address,
-                             location_address if location_name else ""))
-    grid_rows = []
-    for i in range(0, len(fields), 2):
-        left = fields[i]
-        right = fields[i + 1] if i + 1 < len(fields) else ""
-        grid_rows.append(
-            "<tr>"
-            f'<td class="col" width="50%" valign="top" style="padding:0 12px 20px 0;">{left}</td>'
-            f'<td class="col" width="50%" valign="top" style="padding:0 0 20px 12px;">{right}</td>'
-            "</tr>"
-        )
-    grid = ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-            f'style="border-collapse:collapse;">{"".join(grid_rows)}</table>')
-
-    chip_col, chip_txt = ((MAIL_SUCCESS, T["chip_paid"]) if status == "paid"
-                          else (MAIL_WARNING, T["chip_unpaid"]))
-    chip = (f'<span style="display:inline-block;padding:5px 10px 5px 9px;border:1px solid {chip_col};'
-            f'border-radius:6px;{mono}font-size:10px;font-weight:500;letter-spacing:1.4px;'
-            f'text-transform:uppercase;color:{MAIL_TEXT};">'
-            f'<span style="color:{chip_col};">&#9679;</span>&nbsp; {chip_txt}</span>')
-
+    grid = _m_grid(_m_details(
+        T, full_name=full_name, date_val=date_val, event_time=event_time,
+        seat_label=seat_label, location_name=location_name,
+        location_address=location_address,
+    ))
+    chip = (_m_chip(MAIL_SUCCESS, T["chip_paid"]) if status == "paid"
+            else _m_chip(MAIL_WARNING, T["chip_unpaid"]))
     banner_html = (
         '<tr><td style="padding:0;line-height:0;font-size:0;">'
         f'<img src="cid:banner" width="600" alt="{event_name}" '
@@ -657,99 +810,30 @@ def _ticket_email_html(
         'border-radius:8px 8px 0 0;"></td></tr>'
         if has_banner else ""
     )
-    subtitle_html = (
-        f'<div style="{mono}font-size:13px;line-height:1.5;color:{MAIL_MUTED};margin-top:6px;">'
-        f'{subtitle}</div>' if subtitle else ""
-    )
     notes = "".join(
         '<tr>'
-        f'<td width="30" valign="top" style="{mono}font-size:12px;line-height:1.55;'
+        f'<td width="30" valign="top" style="{_M}font-size:12px;line-height:1.55;'
         f'font-weight:500;color:{MAIL_CORAL_TEXT};padding:0 0 8px 0;">{i + 1:02d}</td>'
-        f'<td valign="top" style="{mono}font-size:12px;line-height:1.55;color:{MAIL_MUTED};'
+        f'<td valign="top" style="{_M}font-size:12px;line-height:1.55;color:{MAIL_MUTED};'
         f'padding:0 0 8px 0;">{n}</td></tr>'
         for i, n in enumerate(T["notes"])
     )
     cancel_html = (
-        f'<p style="margin:14px 0 0 0;{mono}font-size:12px;line-height:1.6;color:{MAIL_MUTED};">'
+        f'<p style="margin:14px 0 0 0;{_M}font-size:12px;line-height:1.6;color:{MAIL_MUTED};">'
         f'{T["email_cancel_pre"]}<a href="{cancel_url}" style="color:{MAIL_CORAL_TEXT};'
         f'font-weight:600;text-decoration:underline;">{T["email_cancel_link"]}</a>'
         f'{T["email_cancel_post"]}</p>'
         if cancel_url else ""
     )
-    contact_html = (
-        f'{T["contact"]} <a href="mailto:{contact}" style="color:{MAIL_MUTED};'
-        f'text-decoration:underline;">{contact}</a>' if contact else ""
-    )
-    preheader = " · ".join(x for x in (title or event_name, date_val, event_time, tid) if x)
     # One perforation notch: a canvas-coloured disc centred on the card edge,
     # so it reads as a bite out of the card (clients that drop the negative
     # margin just show a dot on the dashed line).
     notch = (f'<div style="width:18px;height:18px;border-radius:50%;background-color:{MAIL_CANVAS};'
              f'margin-{{side}}:-10px;"></div>')
 
-    return f"""\
-<!DOCTYPE html>
-<html lang="{lang}">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="color-scheme" content="light">
-  <meta name="supported-color-schemes" content="light">
-  <title>{event_name} · Ticket {tid}</title>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Syne:wght@800&amp;display=swap" rel="stylesheet">
-  <style>
-    :root {{ color-scheme: light; supported-color-schemes: light; }}
-    body {{ margin:0; padding:0; background-color:{MAIL_CANVAS}; }}
-    a {{ color:{MAIL_CORAL_TEXT}; }}
-    @media (max-width: 620px) {{
-      .wrap {{ width:100% !important; }}
-      .pad {{ padding-left:22px !important; padding-right:22px !important; }}
-      .col {{ display:block !important; width:100% !important; padding:0 0 18px 0 !important; }}
-    }}
-  </style>
-</head>
-<body style="margin:0;padding:0;background-color:{MAIL_CANVAS};">
-  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:{MAIL_CANVAS};">{preheader}</div>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:{MAIL_CANVAS};">
-    <tr>
-      <td align="center" style="padding:28px 12px 36px 12px;">
-        <table role="presentation" class="wrap" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;">
-
-          <!-- header: organiser wordmark + // E-TICKET -->
-          <tr>
-            <td style="padding:0 4px 16px 4px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-                <td valign="middle" style="font-family:{MAIL_WORDMARK};font-size:18px;font-weight:800;letter-spacing:-0.2px;text-transform:uppercase;color:{MAIL_TEXT};">{event_name}</td>
-                <td valign="middle" align="right" style="{mono}font-size:10px;font-weight:500;letter-spacing:1.4px;text-transform:uppercase;color:{MAIL_MUTED};white-space:nowrap;"><span style="color:{MAIL_CORAL_TEXT};">//</span>&nbsp; {T["eticket"]}</td>
-              </tr></table>
-            </td>
-          </tr>
-
-          <!-- the ticket card -->
-          <tr>
-            <td style="background-color:{MAIL_SURFACE};border:1px solid {MAIL_LINE};border-radius:8px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;">
-                {banner_html}
-
-                <!-- status -->
-                <tr>
-                  <td class="pad" style="padding:28px 32px 24px 32px;border-bottom:1px solid {MAIL_LINE_SOFT};">
-                    {chip}
-                    <h1 style="margin:16px 0 8px 0;{mono}font-size:22px;font-weight:600;line-height:1.3;color:{MAIL_TEXT};">{headline}</h1>
-                    <p style="margin:0;{mono}font-size:13px;line-height:1.6;color:{MAIL_MUTED};">{status_msg}</p>
-                  </td>
-                </tr>
-
-                <!-- event + details -->
-                <tr>
-                  <td class="pad" style="padding:24px 32px 6px 32px;">
-                    <div style="{mono}font-size:10px;font-weight:500;letter-spacing:1.4px;text-transform:uppercase;color:{MAIL_MUTED};"><span style="color:{MAIL_CORAL_TEXT};">//</span>&nbsp; {T["kicker"]}</div>
-                    <div style="margin-top:10px;{mono}font-size:19px;font-weight:600;line-height:1.3;color:{MAIL_TEXT};">{title or event_name}</div>
-                    {subtitle_html}
-                    <div style="height:22px;line-height:22px;font-size:0;">&nbsp;</div>
-                    {grid}
-                  </td>
-                </tr>
+    card = f"""{banner_html}
+                {_m_status_block(chip, headline, status_msg)}
+                {_m_event_block(T, T["kicker"], title or event_name, subtitle, grid)}
 
                 <!-- perforation -->
                 <tr>
@@ -772,11 +856,11 @@ def _ticket_email_html(
                         <img src="cid:qrcode" alt="QR {tid}" width="196" height="196" style="display:block;width:196px;height:196px;border:0;">
                       </td></tr>
                     </table>
-                    <div style="margin:16px 0 2px 0;">{_label(T["tid"])}</div>
-                    <div style="{mono}font-size:20px;font-weight:600;letter-spacing:0.5px;color:{MAIL_TEXT};">{tid}</div>
+                    <div style="margin:16px 0 2px 0;">{_m_label(T["tid"])}</div>
+                    <div style="{_M}font-size:20px;font-weight:600;letter-spacing:0.5px;color:{MAIL_TEXT};">{tid}</div>
                     <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px auto 0 auto;"><tr>
-                      <td style="border:1px solid rgba(0,0,0,0.22);border-color:#C8CCD0;border-radius:6px;">
-                        <a href="{pdf_url}" style="display:inline-block;padding:10px 16px;{mono}font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:{MAIL_TEXT};text-decoration:none;">{T["open_pdf"]}&nbsp; &#8599;</a>
+                      <td style="border:1px solid #C8CCD0;border-radius:6px;">
+                        <a href="{pdf_url}" style="display:inline-block;padding:10px 16px;{_M}font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:{MAIL_TEXT};text-decoration:none;">{T["open_pdf"]}&nbsp; &#8599;</a>
                       </td>
                     </tr></table>
                   </td>
@@ -789,30 +873,62 @@ def _ticket_email_html(
                       <tr><td colspan="2" style="height:18px;line-height:18px;font-size:0;">&nbsp;</td></tr>
                       {notes}
                     </table>
-                    <p style="margin:6px 0 0 0;{mono}font-size:12px;line-height:1.6;color:{MAIL_MUTED};">{T["pdf_attached"]}</p>
+                    <p style="margin:6px 0 0 0;{_M}font-size:12px;line-height:1.6;color:{MAIL_MUTED};">{T["pdf_attached"]}</p>
                     {cancel_html}
                   </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
+                </tr>"""
+    preheader = " · ".join(x for x in (title or event_name, date_val, event_time, tid) if x)
+    return _mail_page(lang=lang, title=f"{event_name} · Ticket {tid}", preheader=preheader,
+                      event_name=event_name, right_label=T["eticket"], card=card, contact=contact)
 
-          <!-- footer -->
-          <tr>
-            <td style="padding:18px 4px 0 4px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-                <td valign="top" style="{mono}font-size:11px;line-height:1.6;color:{MAIL_FAINT};"><span style="color:{MAIL_TEXT};font-weight:600;">[&gt;<span style="color:{MAIL_CORAL_TEXT};">|</span>]</span>&nbsp; {T["footer"]}</td>
-                <td valign="top" align="right" style="{mono}font-size:11px;line-height:1.6;color:{MAIL_FAINT};">{contact_html}</td>
-              </tr></table>
-            </td>
-          </tr>
 
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>"""
+def _cancel_email_html(
+    *,
+    event_name: str,
+    title: str,
+    subtitle: str,
+    headline: str,
+    status_msg: str,
+    refund_text: str,
+    refund_color: str,
+    full_name: str,
+    date_val: str,
+    event_time: str,
+    location_name: str,
+    location_address: str,
+    tid: str,
+    seat_label: str = "",
+    contact: str = "",
+    lang: str = "en",
+) -> str:
+    """The cancellation confirmation, same frame as the ticket email. No QR,
+    no PDF: the ticket is void. All dynamic strings must be HTML-escaped."""
+    T = _tx(lang)
+    grid = _m_grid(_m_details(
+        T, tid=tid, full_name=full_name, date_val=date_val, event_time=event_time,
+        seat_label=seat_label, location_name=location_name,
+        location_address=location_address,
+    ))
+    refund = f"""
+                <tr>
+                  <td class="pad" style="padding:0 32px 4px 32px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tr>
+                      <td style="border-left:3px solid {refund_color};padding:2px 0 2px 14px;">
+                        {_m_label(T["cx_refund"])}
+                        <div style="{_M}font-size:13px;line-height:1.6;color:{MAIL_TEXT};">{refund_text}</div>
+                      </td>
+                    </tr></table>
+                  </td>
+                </tr>"""
+    card = (_m_status_block(_m_chip(MAIL_ERROR, T["cx_chip"]), headline, status_msg, border=False)
+            + refund
+            + '<tr><td style="padding:22px 32px 0 32px;" class="pad"><div style="border-top:1px solid '
+            + MAIL_LINE_SOFT + ';height:0;line-height:0;font-size:0;">&nbsp;</div></td></tr>'
+            + _m_event_block(T, T["cx_kicker"], title or event_name, subtitle, grid)
+            + '<tr><td style="height:10px;line-height:10px;font-size:0;">&nbsp;</td></tr>')
+    preheader = " · ".join(x for x in (T["cx_chip"], title or event_name, date_val, tid) if x)
+    return _mail_page(lang=lang, title=f"{event_name} · {T['cx_chip']} {tid}", preheader=preheader,
+                      event_name=event_name, right_label=T["cx_right"], card=card, contact=contact)
 
 
 def _frontend_base(show_data: dict) -> str:
@@ -829,6 +945,117 @@ def _frontend_base(show_data: dict) -> str:
     if not re.match(r"^https?://", base, re.IGNORECASE):
         base = "https://" + base
     return base
+
+
+def _clean_recipient(email) -> str:
+    """The address, or "" when there is none or it is unusable. CR/LF would
+    allow SMTP header injection through the recipient."""
+    email = str(email or "").strip()
+    if not email:
+        return ""
+    if any(c in email for c in "\r\n") or "@" not in email:
+        logger.error(f"Refusing to send email to invalid address: {email!r}")
+        return ""
+    return email
+
+
+async def _smtp_send(message, email: str) -> None:
+    """Send a built message. The SMTP handshake (connect/STARTTLS/login/
+    sendmail) is blocking and can take seconds against a slow server, so it
+    runs in a worker thread; the timeout keeps a dead server from hanging it."""
+    raw_message = message.as_string()
+
+    def _send_blocking() -> None:
+        with smtplib.SMTP(
+            config.Mail.smtp_server, config.Mail.smtp_port, timeout=15
+        ) as server:
+            server.starttls()
+            server.login(config.Mail.smtp_user, config.Mail.smtp_password)
+            server.sendmail(config.Mail.smtp_user, email, raw_message)
+
+    await asyncio.to_thread(_send_blocking)
+
+
+def _money_text(amount, lang: str) -> str:
+    try:
+        v = float(amount)
+    except (TypeError, ValueError):
+        return ""
+    if str(lang).lower() == "de":
+        return f"{v:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"€{v:,.2f}"
+
+
+async def send_cancel_email(ticket: dict, actor: str, refund_id: Optional[str],
+                            refund_error: Optional[str]) -> None:
+    """Confirm a cancellation to the buyer: which ticket, and what happens to
+    the money. Sent for every cancellation (self-service link, admin, box
+    office); the internal reason is never included."""
+    email = _clean_recipient(ticket.get("email"))
+    if not email:
+        return
+    tid = str(ticket.get("tid") or "")
+    lang = str(ticket.get("lang") or "en")
+    T = _tx(lang)
+    show_data = load_show()
+    view = ticket_view(tid, ticket=ticket, show_data=show_data)
+
+    # What happens to the money. Only a refund Stripe confirmed is promised.
+    price = ticket.get("price")
+    if price is None and view["date"] and view["date"] != "Unlimited":
+        price = (load_date(view["date"]) or {}).get("price")
+    try:
+        price_f = float(price) if price is not None else None
+    except (TypeError, ValueError):
+        price_f = None
+    if refund_id:
+        amount = _money_text(price_f, lang) if price_f else ""
+        refund_text = (T["cx_refund_ok"].format(amount=amount) if amount
+                       else T["cx_refund_ok_noamt"])
+        refund_color = MAIL_SUCCESS
+    elif refund_error:
+        refund_text, refund_color = T["cx_refund_fail"], MAIL_WARNING
+    elif not ticket.get("paid"):
+        refund_text, refund_color = T["cx_refund_none"], MAIL_LINE
+    elif price_f == 0 or str(ticket.get("type") or "") in ("admin", "vip"):
+        refund_text, refund_color = T["cx_refund_free"], MAIL_LINE
+    else:
+        refund_text, refund_color = T["cx_refund_counter"], MAIL_WARNING
+
+    event_raw = str(show_data.get("orga_name") or "Event")
+    title_raw = str(show_data.get("title") or "").strip()
+    date = view["date"]
+    date_long = ticket_pdf.long_date(date, lang) if date else ""
+    time_long = (ticket_pdf.long_time(view["time"], lang)
+                 if view["time"] and date and date != "Unlimited" else "")
+
+    html_content = _cancel_email_html(
+        event_name=escape(event_raw),
+        title=escape(title_raw),
+        subtitle=escape(str(show_data.get("subtitle") or "").strip()),
+        headline=escape(T["cx_head_self"] if actor == "self-service" else T["cx_head"]),
+        status_msg=escape(T["cx_msg"].format(tid=tid)),
+        refund_text=escape(refund_text),
+        refund_color=refund_color,
+        full_name=escape(view["name"]),
+        date_val=escape(date_long),
+        event_time=escape(time_long),
+        location_name=escape(view["venue"]),
+        location_address=escape(view["address"]),
+        tid=escape(tid),
+        seat_label=escape(view["seat"]),
+        contact=escape(view["contact"]),
+        lang=lang if lang in TICKET_I18N else "en",
+    )
+    message = MIMEMultipart("alternative")
+    message["From"] = config.Mail.smtp_user
+    message["To"] = email
+    message["Subject"] = T["cx_subject"].format(
+        event=title_raw or event_raw,
+        date=_fmt_ticket_date(date) if date and date != "Unlimited" else "",
+    ).rstrip(", ")
+    message.attach(MIMEText(html_content, "html", "utf-8"))
+    await _smtp_send(message, email)
 
 
 async def send_email(
@@ -851,14 +1078,8 @@ async def send_email(
     seat_label / lang: when None they are looked up from the stored ticket, so
     the seat is shown and the email + PDF use the buyer's language.
     """
+    email = _clean_recipient(email)
     if not email:
-        return
-
-    # Reject addresses containing CR/LF (or stray whitespace) to prevent
-    # SMTP/email header injection via the recipient address.
-    email = str(email).strip()
-    if not email or any(c in email for c in "\r\n") or "@" not in email:
-        logger.error(f"Refusing to send email to invalid address: {email!r}")
         return
 
     try:
@@ -966,22 +1187,7 @@ async def send_email(
     part.add_header("Content-Disposition", "attachment", filename=f"Ticket-{tid}.pdf")
     message.attach(part)
 
-    # The whole SMTP handshake (connect/STARTTLS/login/sendmail) is blocking
-    # and can take seconds against a slow server; running it directly in this
-    # async function would freeze the entire event loop. Offload it to a worker
-    # thread so other requests keep being served. A connection timeout keeps a
-    # dead mail server from hanging the worker indefinitely.
-    raw_message = message.as_string()
-
-    def _send_blocking() -> None:
-        with smtplib.SMTP(
-            config.Mail.smtp_server, config.Mail.smtp_port, timeout=15
-        ) as server:
-            server.starttls()
-            server.login(config.Mail.smtp_user, config.Mail.smtp_password)
-            server.sendmail(config.Mail.smtp_user, email, raw_message)
-
-    await asyncio.to_thread(_send_blocking)
+    await _smtp_send(message, email)
 
 
 def edit_ticket(app=quart.Quart):
@@ -1267,6 +1473,16 @@ async def _do_cancel(tid: str, actor: str, reason: str):
             "refund_id": refund_id,
         },
     )
+
+    # Tell the buyer, in the background: a slow mail server must never hold
+    # up the cancellation (or a whole box-office void) it confirms.
+    if ticket.get("email"):
+        async def _notify():
+            try:
+                await send_cancel_email(ticket, actor, refund_id, refund_error)
+            except Exception as e:
+                logger.error(f"Cancellation email for {tid} failed: {e}")
+        asyncio.get_running_loop().create_task(_notify())
 
     msg = "Ticket cancelled."
     if seat_released:
