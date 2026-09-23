@@ -188,6 +188,21 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["ajax"])) {
             ]);
             break;
 
+        case "pair_open":
+            // Register scanner: this register shows a 4-digit code that a
+            // handheld in "Kasse" mode joins; its scans open tickets here.
+            [, $out] = call_api("api/boxoffice/pair/open", ["seller" => $username]);
+            break;
+
+        case "pair_poll":
+        case "pair_close":
+            [$code, $out] = call_api("api/boxoffice/pair/" . ($_POST["ajax"] === "pair_poll" ? "poll" : "close"), [
+                "code"   => (string) ($in["code"] ?? ""),
+                "secret" => (string) ($in["secret"] ?? ""),
+            ]);
+            if ($code === 410) $out = ["status" => "error", "message" => "pair_gone"];
+            break;
+
         case "edit":
             if (!$isAdmin) {
                 http_response_code(403);
@@ -254,6 +269,10 @@ $T = [
         "cancel_confirm" => "Ticket stornieren? Online bezahlte Tickets werden automatisch erstattet. Nicht umkehrbar.",
         "cancel_ok" => "Ticket storniert.", "edit" => "Bearbeiten (Admin)", "save" => "Speichern", "saved" => "Gespeichert.",
         "unlimited" => "Alle Termine", "switch_app" => "App wechseln", "logout" => "Abmelden", "language" => "Sprache",
+        "pair" => "Scanner koppeln", "pair_title" => "Handy als Kassen-Scanner",
+        "pair_hint" => "Am Handy den Einlass-Scanner öffnen, unten „Kasse“ wählen und diesen Code eingeben. Jedes gescannte Ticket öffnet sich dann hier zum Kassieren.",
+        "pair_wait" => "Warte auf Handy…", "pair_ok" => "Handy verbunden", "pair_end" => "Kopplung beenden",
+        "pair_gone" => "Scanner-Kopplung beendet.", "pair_scanned" => "Gescannt:", "scanner" => "Scanner",
         "method_bar" => "Bar", "method_card" => "Karte", "method_free" => "Frei", "method_stripe" => "Online", "method_paid" => "Vor Ort zahlen",
         "report_title" => "Kassenabschluss", "report_by" => "Kasse", "report_sales" => "Verkäufe",
         "shortcuts" => "Tasten: 1–9 Kategorie · Entf letzte entfernen · Enter kassieren · Esc leeren",
@@ -297,6 +316,10 @@ $T = [
         "cancel_confirm" => "Cancel this ticket? Tickets paid online are refunded automatically. Cannot be undone.",
         "cancel_ok" => "Ticket cancelled.", "edit" => "Edit (admin)", "save" => "Save", "saved" => "Saved.",
         "unlimited" => "All dates", "switch_app" => "Switch app", "logout" => "Log out", "language" => "Language",
+        "pair" => "Pair scanner", "pair_title" => "Phone as register scanner",
+        "pair_hint" => "On the phone, open the door scanner, choose “Kasse” at the bottom and enter this code. Every scanned ticket then opens here for payment.",
+        "pair_wait" => "Waiting for phone…", "pair_ok" => "Phone connected", "pair_end" => "End pairing",
+        "pair_gone" => "Scanner pairing ended.", "pair_scanned" => "Scanned:", "scanner" => "Scanner",
         "method_bar" => "Cash", "method_card" => "Card", "method_free" => "Free", "method_stripe" => "Online", "method_paid" => "Pay at venue",
         "report_title" => "Register report", "report_by" => "Register", "report_sales" => "Sales",
         "shortcuts" => "Keys: 1–9 category · Del remove last · Enter charge · Esc clear",
@@ -327,6 +350,19 @@ $h = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES);
     .tf-tab { padding: 8px 16px; border-radius: 8px; border: 0; background: transparent; color: var(--avo-text-muted); font-weight: 700; cursor: pointer; font-size: .95rem; }
     .tf-tab[aria-selected="true"] { background: var(--avo-primary); color: var(--avo-primary-on); }
     .tf-spacer { flex: 1; }
+    /* register scanner pairing */
+    .tf-pairbtn { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border-radius: var(--avo-radius-md); border: 1px solid var(--avo-border); background: var(--avo-bg); color: var(--avo-text); cursor: pointer; font-family: var(--avo-font-mono); font-size: .8rem; font-weight: 600; white-space: nowrap; }
+    .tf-pairbtn:hover { border-color: var(--avo-primary); }
+    .tf-pairbtn svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .tf-pairbtn .dot { width: 8px; height: 8px; border-radius: 999px; background: var(--avo-text-muted); }
+    .tf-pairbtn.is-live .dot { background: var(--avo-success); }
+    .tf-pairbtn.is-wait .dot { background: var(--avo-warning); animation: tfPulse 1s ease-in-out infinite; }
+    @keyframes tfPulse { 50% { opacity: .3; } }
+    .tf-paircode { font-family: var(--avo-font-mono); font-size: 3.4rem; font-weight: 600; letter-spacing: .3em; text-align: center; padding: 18px 0 18px .3em; border: 1px solid var(--avo-border); border-radius: var(--avo-radius-lg); background: var(--avo-bg); }
+    .tf-pairstate { display: flex; align-items: center; justify-content: center; gap: 8px; font-family: var(--avo-font-mono); font-size: .85rem; color: var(--avo-text-muted); }
+    .tf-pairstate .dot { width: 9px; height: 9px; border-radius: 999px; background: var(--avo-warning); animation: tfPulse 1s ease-in-out infinite; }
+    .tf-pairstate.is-live { color: var(--avo-success); }
+    .tf-pairstate.is-live .dot { background: var(--avo-success); animation: none; }
     .tf-user { position: relative; }
     .tf-userbtn { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: var(--avo-radius-md); border: 1px solid var(--avo-border); background: var(--avo-bg); color: var(--avo-text); cursor: pointer; font-weight: 700; max-width: 180px; }
     .tf-userbtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -504,6 +540,11 @@ $h = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES);
         <button class="tf-tab" role="tab" aria-selected="false" data-view="sales"><?php echo $h($L["tab_sales"]); ?></button>
     </nav>
     <div class="tf-spacer"></div>
+    <button type="button" class="tf-pairbtn" id="pairBtn" aria-haspopup="dialog">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg>
+        <span id="pairBtnLabel"><?php echo $h($L["pair"]); ?></span>
+        <span class="dot" id="pairBtnDot" hidden></span>
+    </button>
     <button type="button" class="avo-theme-toggle" data-avo-theme-toggle aria-label="Theme">
         <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
         <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
@@ -657,6 +698,17 @@ $h = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES);
             <input type="text" id="spLast" class="input" placeholder="<?php echo $h($L["last_name"]); ?>">
         </div>
         <button type="button" class="tf-cta" id="spGo"><?php echo $h($L["create_print"]); ?></button>
+    </div>
+</dialog>
+
+<!-- register scanner pairing -->
+<dialog class="tf-dlg" id="pairDlg">
+    <div class="d-head"><h3><?php echo $h($L["pair_title"]); ?></h3><button type="button" class="tf-x" data-close>✕</button></div>
+    <div class="d-body" style="display:grid;gap:16px">
+        <p style="margin:0;color:var(--avo-text-muted);line-height:1.5"><?php echo $h($L["pair_hint"]); ?></p>
+        <div class="tf-paircode" id="pairCode">····</div>
+        <div class="tf-pairstate" id="pairState"><span class="dot"></span><span id="pairStateText"><?php echo $h($L["pair_wait"]); ?></span></div>
+        <button type="button" class="btn-outline" id="pairEnd"><?php echo $h($L["pair_end"]); ?></button>
     </div>
 </dialog>
 
@@ -1659,6 +1711,94 @@ document.addEventListener("keydown", e => {
     else if (e.key === "Escape") { if (!$("doneView").hidden) showCart(); else clearCart(); }
     else if (e.key === "Backspace" || e.key === "Delete" || e.key === "-") { e.preventDefault(); removeLast(); }
 });
+
+/* =====================================================================
+   Register scanner: a phone in the handheld's "Kasse" mode joins with the
+   code shown here; each ticket it scans opens in the ticket dialog, ready to
+   collect. The pairing survives a reload of this tab (sessionStorage).
+   ===================================================================== */
+const pair = {
+    code: null, secret: null, live: false, timer: null,
+    load() {
+        try { Object.assign(this, JSON.parse(sessionStorage.getItem("tf-pair") || "{}")); } catch (e) {}
+    },
+    save() {
+        try {
+            if (this.code) sessionStorage.setItem("tf-pair", JSON.stringify({ code: this.code, secret: this.secret }));
+            else sessionStorage.removeItem("tf-pair");
+        } catch (e) {}
+    },
+};
+
+function renderPair() {
+    const on = !!pair.code;
+    $("pairBtn").classList.toggle("is-live", on && pair.live);
+    $("pairBtn").classList.toggle("is-wait", on && !pair.live);
+    $("pairBtnDot").hidden = !on;
+    $("pairBtnLabel").textContent = on ? L.scanner + " " + pair.code : L.pair;
+    $("pairCode").textContent = pair.code || "····";
+    $("pairState").classList.toggle("is-live", pair.live);
+    $("pairStateText").textContent = pair.live ? L.pair_ok : L.pair_wait;
+}
+
+async function pairOpen() {
+    try {
+        const r = await api("pair_open");
+        if (r.status !== "success") throw new Error(r.message || L.err_net);
+        pair.code = r.code; pair.secret = r.secret; pair.live = false;
+        pair.save(); renderPair(); pairSchedule(0);
+    } catch (e) { toast(e.message, "err"); }
+}
+
+function pairDrop(msg) {
+    pair.code = pair.secret = null; pair.live = false;
+    clearTimeout(pair.timer);
+    pair.save(); renderPair();
+    if (msg) toast(msg, "err");
+}
+
+function pairSchedule(ms) {
+    clearTimeout(pair.timer);
+    if (pair.code) pair.timer = setTimeout(pairPoll, ms);
+}
+
+async function pairPoll() {
+    if (!pair.code) return;
+    let r;
+    try { r = await api("pair_poll", { code: pair.code, secret: pair.secret }); }
+    catch (e) { pairSchedule(4000); return; }          // offline: keep trying
+    if (r.message === "pair_gone") {
+        // Backend restarted or the pairing timed out: open a fresh one while
+        // the dialog is up, otherwise tell the cashier it ended.
+        if ($("pairDlg").open) { pairDrop(); pairOpen(); } else pairDrop(L.pair_gone);
+        return;
+    }
+    if (r.status === "success") {
+        if (r.handheld !== pair.live) { pair.live = r.handheld; renderPair(); }
+        const scans = r.scans || [];
+        if (scans.length) {
+            if ($("pairDlg").open) $("pairDlg").close();
+            const tid = scans[scans.length - 1].tid;       // the latest scan wins
+            toast(L.pair_scanned + " " + tid);
+            openTicket(tid);
+        }
+    }
+    pairSchedule(document.hidden ? 5000 : 1200);
+}
+
+$("pairBtn").addEventListener("click", () => {
+    if (!pair.code) pairOpen();
+    renderPair();
+    $("pairDlg").showModal();
+});
+$("pairEnd").addEventListener("click", async () => {
+    const { code, secret } = pair;
+    pairDrop();
+    $("pairDlg").close();
+    if (code) { try { await api("pair_close", { code, secret }); } catch (e) {} }
+});
+document.addEventListener("visibilitychange", () => { if (!document.hidden) pairSchedule(0); });
+pair.load(); renderPair(); pairSchedule(0);
 
 function renderAll() {
     renderCats();

@@ -24,6 +24,7 @@ from assets.admin_ops import admin_ops
 from assets.seatmap import seatmap_routes
 from assets.boxoffice import boxoffice_routes
 from assets.checkout import checkout_routes
+from assets.scanpair import scanpair_routes
 from config import conf as config
 from assets.timeutil import local_now
 
@@ -69,6 +70,8 @@ _RATE_LIMITS = {
     "/api/checkout/start": (12, 300),
     "/api/checkout/intent": (15, 300),
     "/api/checkout/complete": (10, 300),
+    # Handheld joining a register by its 4-digit code: stops code guessing.
+    "/api/boxoffice/pair/join": (20, 300),
 }
 # Calls older than the largest window can be discarded entirely.
 _RATE_MAX_WINDOW = max((w for _, w in _RATE_LIMITS.values()), default=60)
@@ -151,6 +154,7 @@ admin_ops(app)
 seatmap_routes(app)
 boxoffice_routes(app)
 checkout_routes(app)
+scanpair_routes(app)
 logger.success("Systems enabled.")
 
 qr_gate = """

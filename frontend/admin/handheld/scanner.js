@@ -3,8 +3,12 @@
    Drives the camera (html5-qrcode low-level API), the result sheet, torch,
    vibration and clock for BOTH the Scanner and the Inspector page.
    Each page sets window.HH_CONFIG before loading this file:
-     { mode:'validate'|'inspect', payloadKey:'ticketId'|'tid',
-       validText, invalidText, showTimeline:bool }
+     { mode:'validate'|'inspect'|'register', payloadKey:'ticketId'|'tid',
+       validText, invalidText, showTimeline:bool,
+       // optional, used by the register (Kasse) page:
+       renderBody(d) -> html,   custom result sheet body
+       onGone(),                a 410 answer: the pairing is gone
+       autostart:bool }         false = wait for window.HH.start()
    ========================================================================== */
 (function () {
   "use strict";
@@ -202,7 +206,8 @@
     $("hhResultStatus").textContent = valid ? VALID_TEXT : (reuse ? REUSE_TEXT : INVALID_TEXT);
     $("hhResultMsg").textContent = (d && d.message) || "";
 
-    $("hhResultBody").innerHTML = (d && d.data) ? renderBody(d) : "";
+    $("hhResultBody").innerHTML = CFG.renderBody ? CFG.renderBody(d || {})
+      : ((d && d.data) ? renderBody(d) : "");
     sheet.classList.add("show");
 
     play(valid ? "success.mp3" : "error.mp3");
@@ -285,6 +290,14 @@
       .then(function (res) {
         clearTimeout(timer);
         $("hhSpinner").classList.remove("show");
+        if (res.status === 410 && CFG.onGone) {
+          netRecovered();
+          resumeScanning();
+          lastCode = "";
+          CFG.onGone();
+          if (opts.onSettled) opts.onSettled(false);
+          return;
+        }
         // A transport/server failure (no JSON, or HTTP 401/5xx) is NOT a ticket
         // verdict — never present it as a normal "Invalid" ticket to the operator.
         if (!res.data || (!res.ok && res.status >= 500)) {
@@ -448,8 +461,10 @@
     }
 
     // autostart; if the browser needs a gesture, the start overlay is shown
-    start();
+    if (CFG.autostart !== false) start();
   });
+
+  window.HH = { start: start, toast: toast };
 
   window.addEventListener("beforeunload", function () {
     if (scanner) { try { scanner.stop(); } catch (e) {} }

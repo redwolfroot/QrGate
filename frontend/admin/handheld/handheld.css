@@ -212,7 +212,9 @@ body {
   transition: background 0.15s, color 0.15s;
 }
 .hh-seg a.active { background: var(--avo-primary); color: #fff; }
-.hh-seg a svg { width: 18px; height: 18px; }
+.hh-seg a svg { width: 18px; height: 18px; flex-shrink: 0; }
+/* three modes (Scanner, Inspector, Kasse) must fit a 360px phone */
+.hh-seg a { gap: 6px; padding: 13px 4px; font-size: 0.86rem; min-width: 0; }
 
 /* ---- result sheet (full screen) ----------------------------------------- */
 .hh-result {

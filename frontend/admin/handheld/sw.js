@@ -1,12 +1,13 @@
 // QrGate handheld PWA service worker
 // Network-first for the app shell (php/css/js + navigations) so redesigns
 // propagate immediately; cache-first for static icons/CDN; POST + API always live.
-const CACHE_NAME = 'qr-gate-handheld-v7';
+const CACHE_NAME = 'qr-gate-handheld-v8';
 
 const PRECACHE = [
   './',
   './index.php',
   './inspector.php',
+  './kasse.php',
   './handheld.css',
   './scanner.js',
   './manifest.json',

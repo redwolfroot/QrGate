@@ -34,6 +34,7 @@ QrGate is a comprehensive system for managing events, tickets, and access contro
 - **Ticket Delivery**: A branded, light-theme ticket email (QR inline, event banner, status, cancel link) with the PDF ticket attached. PDFs are drawn fresh from the stored ticket on every request, so paid state, name and seat are always current — A4 e-ticket with banner and perforated stub, A5 box-office layout, and multi-ticket batch prints; IBM Plex Mono and Syne are embedded (`backend/assets/fonts`, SIL OFL)
 - **Self-Service Cancellation**: Every ticket email carries a secure, per-ticket cancel link — the buyer can cancel up to 24 hours before the event, with automatic Stripe refunds for online payments and the seat released back to the pool
 - **Access Control**: QR code-based ticket validation for entry, with a mobile handheld scanner — a re-scanned (already used) ticket triggers a loud **double-entry alarm** showing when it was first scanned
+- **Register Scanner**: Pair a phone with a TicketFlow register by a 4-digit code (handheld tab “Kasse”); every ticket it scans opens at that register, ready to collect payment for a reservation
 - **Admin Panel**: Dashboard for events, dates, locations, images, tickets and statistics, plus a **live door check-in monitor** (checked-in vs. sold, occupancy %, latest scans)
 - **Maintenance & Data Tools**: One-click **database backup** download plus a guarded danger zone (wipe data, reinstall, factory reset)
 - **Multi-language Support**: German and English
@@ -367,6 +368,11 @@ All `/api/*` routes require the `Authorization: {auth_key}` header, except the p
 | `/api/boxoffice/search`                                   | POST     | Find tickets by ID, name or email                                                                         |
 | `/api/boxoffice/collect`                                  | POST     | Take payment for a reserved (unpaid) ticket at the counter                                                |
 | `/api/boxoffice/void`                                     | POST     | Cancel several tickets (e.g. undo a sale)                                                                 |
+| `/api/boxoffice/pair/open`                                | POST     | Register opens a scanner pairing: 4-digit code + secret                                                   |
+| `/api/boxoffice/pair/poll`                                | POST     | Register fetches scanned tickets and whether the phone is connected                                       |
+| `/api/boxoffice/pair/join`                                | POST     | Phone joins a register by code (rate-limited), gets a handheld token                                      |
+| `/api/boxoffice/pair/scan`                                | POST     | Phone sends a scanned ticket to its register                                                              |
+| `/api/boxoffice/pair/ping`                                | POST     | Phone heartbeat; `pair/close` ends a pairing                                                              |
 | `/api/ticket/get`                                         | GET/POST | Look up a ticket by id                                                                                    |
 | `/api/ticket/edit`                                        | POST     | Edit a ticket                                                                                             |
 | `/api/ticket/cancel`                                      | POST     | Cancel ticket (+ Stripe refund)                                                                           |
