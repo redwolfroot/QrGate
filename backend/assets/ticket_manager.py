@@ -815,6 +815,22 @@ def _ticket_email_html(
 </html>"""
 
 
+def _frontend_base(show_data: dict) -> str:
+    """The shop's public base URL without a trailing slash, or "" if none is
+    configured. The admin may enter a bare host ("tickets.example.com"), so a
+    missing scheme defaults to https://."""
+    base = str(
+        show_data.get("app_domain")
+        or getattr(config.API, "frontend_origin", "")
+        or ""
+    ).strip().rstrip("/")
+    if not base or base.startswith("*"):
+        return ""
+    if not re.match(r"^https?://", base, re.IGNORECASE):
+        base = "https://" + base
+    return base
+
+
 async def send_email(
     first_name: str,
     last_name: str,
@@ -873,29 +889,23 @@ async def send_email(
     time_long = (ticket_pdf.long_time(event_time, lang)
                  if event_time and date and date != "Unlimited" else "")
 
-    # Self-service cancel link → the PHP frontend page, which POSTs to the
-    # token-gated /api/ticket/self-cancel. Only offered for real dated tickets
-    # (a dateless admin/vip ticket has no online cancellation). The public app
-    # domain is admin-configurable (show setting "app_domain"); we fall back to
-    # the env-configured frontend_origin when it isn't set.
+    # Links in the email point at the shop (admin setting "app_domain", else
+    # the env-configured frontend_origin), never at the backend, which buyers
+    # usually cannot reach. Both pages are thin PHP proxies to token-gated
+    # backend routes.
+    frontend_base = _frontend_base(show_data)
+    token = ticket_token(tid)
+    # Self-service cancel link: only for real dated tickets (a dateless
+    # admin/vip ticket has no online cancellation).
     cancel_url = ""
-    if date and date != "Unlimited":
-        frontend_base = str(
-            show_data.get("app_domain")
-            or getattr(config.API, "frontend_origin", "")
-            or ""
-        ).strip().rstrip("/")
-        if frontend_base and not frontend_base.startswith("*"):
-            # Tolerate an admin entering a bare host ("tickets.example.com"):
-            # a link needs a scheme, so default to https:// when none is given.
-            if not re.match(r"^https?://", frontend_base, re.IGNORECASE):
-                frontend_base = "https://" + frontend_base
-            cancel_url = (
-                f"{frontend_base}/cancel.php?tid={tid}&token={ticket_token(tid)}"
-            )
-    # The PDF link carries the per-ticket HMAC token, which lets the otherwise
-    # public /codes/pdf endpoint accept it while still rejecting enumeration.
-    pdf_url = f"{config.API.backend_url}/codes/pdf?tid={tid}&token={ticket_token(tid)}"
+    if frontend_base and date and date != "Unlimited":
+        cancel_url = f"{frontend_base}/cancel.php?tid={tid}&token={token}"
+    # The PDF link: the shop's ticket.php streams /codes/pdf. Without a shop
+    # address the backend URL is the only one there is.
+    pdf_url = (
+        f"{frontend_base}/ticket.php?tid={tid}&token={token}" if frontend_base
+        else f"{str(config.API.backend_url).rstrip('/')}/codes/pdf?tid={tid}&token={token}"
+    )
 
     if type != "normal":
         subject = T["subject_paid"]
