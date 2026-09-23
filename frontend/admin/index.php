@@ -60,7 +60,7 @@ $boot = [
 
 $pageTitle = 'QrGate · Admin';
 $assetBase = '../';
-$extraHead = '<link rel="stylesheet" href="admin.css?v=7">'
+$extraHead = '<link rel="stylesheet" href="admin.css?v=8">'
     . '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>';
 $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES);
 
@@ -527,6 +527,6 @@ $nav = [
     <div class="avo-toast-stack" id="toasts" aria-live="polite"></div>
 
     <script>window.ADMIN = <?php echo json_encode($boot, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;</script>
-    <script src="admin.js?v=4" defer></script>
+    <script src="admin.js?v=5" defer></script>
 </body>
 </html>

@@ -257,14 +257,16 @@
 
     // box-office price categories
     let cats = (S.boxoffice_categories || []).map((c) => Object.assign({}, c));
-    const MODES = { minus: 'Abzug vom Normalpreis (€)', percent: 'Rabatt (%)', fixed: 'Fester Preis (€)' };
+    const MODES = { minus: 'Abzug in €', percent: 'Rabatt in %', fixed: 'Festpreis in €' };
     const list = $('catList');
     function render() {
-      list.innerHTML = cats.length ? '' : '<p class="avo-help" style="padding:var(--avo-space-3) 0">Keine Kategorien. An der Kasse gibt es nur „Normal“.</p>';
+      list.innerHTML = cats.length
+        ? '<div class="adm-cat adm-cat--head" aria-hidden="true"><span>Name</span><span>Preisregel</span><span>Wert</span><span></span></div>'
+        : '<p class="avo-help" style="padding:var(--avo-space-3) 0">Keine Kategorien. An der Kasse gibt es nur „Normal“.</p>';
       cats.forEach((c, i) => {
         const row = document.createElement('div');
         row.className = 'adm-cat';
-        row.innerHTML = '<input class="avo-input" data-k="name" maxlength="40" placeholder="Name, z. B. Ermäßigt" aria-label="Name">'
+        row.innerHTML = '<input class="avo-input" data-k="name" maxlength="40" placeholder="z. B. Ermäßigt" aria-label="Name">'
           + '<select class="avo-select" data-k="mode" aria-label="Preisregel">' + Object.entries(MODES).map(([k, t]) => '<option value="' + k + '">' + t + '</option>').join('') + '</select>'
           + '<input class="avo-input" data-k="value" type="number" min="0" step="0.01" aria-label="Wert">'
           + '<button type="button" class="adm-iconbtn" aria-label="Kategorie entfernen">' + icon('x') + '</button>';

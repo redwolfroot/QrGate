@@ -108,9 +108,23 @@
 .adm-btn-danger:hover { border-color: var(--avo-error) !important; }
 
 /* box-office categories: one hairline list */
-.adm-cats { display: flex; flex-direction: column; border-top: 1px solid var(--avo-line); }
-.adm-cat { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.4fr) 90px 28px; gap: var(--avo-space-2); align-items: center; padding: var(--avo-space-2) 0; border-bottom: 1px solid var(--avo-line); }
-.adm-cat .avo-input, .adm-cat .avo-select { height: var(--avo-ui-control-h-compact); }
+.adm-cats { display: flex; flex-direction: column; border-top: 1px solid var(--avo-line); container-type: inline-size; }
+.adm-cat { display: grid; grid-template-columns: minmax(0, 1fr) minmax(156px, 1fr) 84px 28px; gap: var(--avo-space-2); align-items: center; padding: var(--avo-space-2) 0; border-bottom: 1px solid var(--avo-line); }
+/* Same height as every other control; padding only inline, so the text sits
+   centred instead of being pushed down and clipped. */
+.adm-cat .avo-input, .adm-cat .avo-select { height: var(--avo-ui-control-h); padding-block: 0; line-height: normal; min-width: 0; }
+.adm-cat .avo-input[type=number] { text-align: right; }
+.adm-cat--head { padding: var(--avo-space-2) 0 0; border-bottom: 0; font-family: var(--avo-font-mono); font-size: var(--avo-ui-label); letter-spacing: .12em; text-transform: uppercase; color: var(--avo-text-muted); }
+/* A narrow card (two-column page, small screens): name on its own line,
+   rule and value below it, so no label is ever cut. */
+@container (max-width: 480px) {
+  .adm-cat { grid-template-columns: minmax(0, 1fr) 84px 28px; row-gap: 6px; padding: var(--avo-space-3) 0; }
+  .adm-cat [data-k=name] { grid-column: 1 / 3; grid-row: 1; }
+  .adm-cat > button { grid-column: 3; grid-row: 1; }
+  .adm-cat [data-k=mode] { grid-column: 1; grid-row: 2; }
+  .adm-cat [data-k=value] { grid-column: 2; grid-row: 2; }
+  .adm-cat--head { display: none; }
+}
 
 /* images */
 .adm-img { display: flex; flex-direction: column; gap: var(--avo-space-3); }
