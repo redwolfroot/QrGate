@@ -106,14 +106,14 @@ $extraHead = '<style>'
     . '</style>';
 ?>
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en" class="avo-ui dark">
 <?php include 'partials/head.php'; ?>
 <body class="min-h-screen" style="background: var(--avo-bg); color: var(--avo-text);">
 <div class="avo-topbar" aria-hidden="true"></div>
 
 <main class="max-w-2xl mx-auto px-6 py-12">
     <div class="text-center mb-8">
-        <div class="avo-kicker">// first-run setup</div>
+        <div class="avo-kicker">first-run setup</div>
         <h1 class="text-3xl font-bold mt-2" style="font-family:var(--avo-font-display);">Welcome to QrGate</h1>
         <p class="mt-2" style="color: var(--avo-text-muted);">Let's get your ticketing system ready. This takes about a minute.</p>
     </div>

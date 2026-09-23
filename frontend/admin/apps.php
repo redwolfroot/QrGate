@@ -31,14 +31,14 @@ $pageTitle = 'Choose App';
 $assetBase = '../';
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="avo-ui">
 <?php include __DIR__ . '/../partials/head.php'; ?>
 <body class="min-h-screen flex flex-col">
     <div class="avo-topbar" aria-hidden="true"></div>
     <main class="flex-1 flex items-center justify-center p-4">
         <div class="w-full max-w-2xl">
             <div class="text-center mb-8">
-                <div class="avo-kicker mb-1">// signed in as <?= htmlspecialchars($username) ?></div>
+                <div class="avo-kicker mb-1">signed in as <?= htmlspecialchars($username) ?></div>
                 <h1 class="text-3xl">Choose an <span class="avo-hl">app</span></h1>
                 <p class="avo-muted mt-1 text-sm">Pick where you want to go.</p>
             </div>

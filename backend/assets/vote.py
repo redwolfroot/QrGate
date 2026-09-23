@@ -31,5 +31,5 @@ def vote(app: quart.Quart):
                 vote_data["comments"] = []
             vote_data["comments"].append(str(comment))
 
-        save_show(show)
+        save_show(show, write_dates=False)
         return quart.jsonify({"status": "success", "message": "Vote received"}), 200

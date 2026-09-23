@@ -115,11 +115,36 @@ $extraHead = <<<HTML
     .cx-stamp.show { opacity:1; animation:none; }
     .cx-badge .cx-draw { stroke-dashoffset:0; animation:none; }
   }
+
+  /* ---- avocloud v4.1: black canvas, no coral washes or glows, 6/8px corners,
+     mono labels. Overrides the older look above. ---- */
+  .cx-glow { display:none; }
+  .cx-ticket { border-radius:var(--avo-radius-lg); border-color:var(--avo-line-strong); background:var(--avo-surface); box-shadow:inset 0 1px 0 var(--avo-glass-edge); }
+  .cx-ticket__top { background:none; color:var(--avo-text); box-shadow:inset 2px 0 0 var(--avo-primary); }
+  .cx-eyebrow { color:var(--avo-text-muted); opacity:1; }
+  .cx-event { font-family:var(--avo-font-brand); font-weight:700; letter-spacing:-.02em; }
+  .cx-perf { border-top:1px dashed var(--avo-line-strong); }
+  .cx-notch { background:var(--avo-canvas); border:1px solid var(--avo-line-strong); }
+  .cx-row { border-bottom-color:var(--avo-line); }
+  .cx-row__k { font-family:var(--avo-font-mono); font-weight:500; letter-spacing:.12em; }
+  .cx-seat { border-radius:var(--avo-radius); font-family:var(--avo-font-mono); font-weight:500; font-size:.85rem; color:var(--avo-text); background:none; border-color:var(--avo-line-strong); }
+  .cx-sk { border-radius:var(--avo-radius); background-image:none; animation:avo-pulse 1.2s ease-in-out infinite; }
+  .cx-btn { border-radius:var(--avo-radius); min-height:40px; font-family:var(--avo-font-mono); font-weight:500; font-size:.8rem; letter-spacing:.06em; text-transform:uppercase; }
+  .cx-btn--danger { animation:none; box-shadow:none; }
+  .cx-btn--danger:hover { box-shadow:none; filter:brightness(1.1); }
+  .cx-spin { border:0; width:16px; height:16px;
+    background:repeating-conic-gradient(currentColor 0 15deg, transparent 0 30deg);
+    -webkit-mask:radial-gradient(circle closest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+            mask:radial-gradient(circle closest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+    animation:cx-spin 1.2s linear infinite; }
+  .cx-stamp { border-radius:var(--avo-radius); border-width:2px; font-family:var(--avo-font-mono); font-weight:500; font-size:1.1rem; letter-spacing:.2em; }
+  .cx-statusbadge { border-radius:var(--avo-radius); font-family:var(--avo-font-mono); font-weight:500; letter-spacing:.08em; text-transform:uppercase; font-size:.7rem; }
+  .cx-res-title { font-family:var(--avo-font-brand); font-weight:700; }
 </style>
 HTML;
 ?>
 <!DOCTYPE html>
-<html lang="<?php echo $current_language; ?>">
+<html lang="<?php echo $current_language; ?>" class="avo-ui">
 <?php include __DIR__ . '/partials/head.php'; ?>
 <body class="bg-background text-foreground min-h-screen flex flex-col pt-1">
 
@@ -133,7 +158,7 @@ HTML;
             </svg>
             <?php echo $is_de ? 'Zurück' : 'Back'; ?>
         </a>
-        <span class="absolute left-1/2 -translate-x-1/2 text-sm font-bold text-muted-foreground" style="font-family:var(--avo-font-display)">
+        <span class="absolute left-1/2 -translate-x-1/2 text-sm font-bold text-muted-foreground qg-wordmark">
             <?php echo $orga_name; ?>
         </span>
         <form method="POST" class="ml-auto">

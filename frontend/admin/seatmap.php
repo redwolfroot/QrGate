@@ -41,14 +41,14 @@ $extraHead = '<meta name="csrf-token" content="' . htmlspecialchars($csrfToken, 
       </style>';
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="avo-ui">
 <?php include __DIR__ . '/../partials/head.php'; ?>
 <body class="min-h-screen flex flex-col">
     <div class="avo-topbar" aria-hidden="true"></div>
     <main class="flex-1 p-4">
         <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
             <div>
-                <div class="avo-kicker mb-1">// seat map editor</div>
+                <div class="avo-kicker mb-1">seat map editor</div>
                 <h1 class="text-2xl">Room <span class="avo-hl">layout</span></h1>
             </div>
             <div class="flex items-center gap-2 flex-wrap">
@@ -71,7 +71,7 @@ $extraHead = '<meta name="csrf-token" content="' . htmlspecialchars($csrfToken, 
             <!-- LEFT: palette + generators -->
             <aside class="flex flex-col gap-3">
                 <div class="card"><div class="card-content space-y-2">
-                    <div class="avo-kicker">// add</div>
+                    <div class="avo-kicker">add</div>
                     <button class="btn-outline tool-btn" data-add="seat">＋ Single seat</button>
                     <button class="btn-outline tool-btn" data-add="stage">＋ Stage</button>
                     <button class="btn-outline tool-btn" data-add="screen">＋ Screen</button>
@@ -82,7 +82,7 @@ $extraHead = '<meta name="csrf-token" content="' . htmlspecialchars($csrfToken, 
                 </div></div>
 
                 <div class="card"><div class="card-content space-y-2">
-                    <div class="avo-kicker">// fast fill</div>
+                    <div class="avo-kicker">fast fill</div>
                     <label class="text-xs avo-muted">Row of seats</label>
                     <div class="flex gap-2">
                         <input id="rowCount" type="number" min="1" value="10" class="input" style="width:5rem" title="seats">
@@ -97,7 +97,7 @@ $extraHead = '<meta name="csrf-token" content="' . htmlspecialchars($csrfToken, 
                 </div></div>
 
                 <div class="card"><div class="card-content space-y-2">
-                    <div class="avo-kicker">// selection</div>
+                    <div class="avo-kicker">selection</div>
                     <button id="dupBtn" class="btn-outline tool-btn">Duplicate <span class="avo-muted">(Ctrl+D)</span></button>
                     <button id="delBtn" class="btn-outline tool-btn">Delete <span class="avo-muted">(Del)</span></button>
                     <button id="autoNumBtn" class="btn tool-btn">Auto-number seats</button>
@@ -121,7 +121,7 @@ $extraHead = '<meta name="csrf-token" content="' . htmlspecialchars($csrfToken, 
             <!-- RIGHT: categories + inspector -->
             <aside class="flex flex-col gap-3">
                 <div class="card"><div class="card-content space-y-2">
-                    <div class="avo-kicker">// categories</div>
+                    <div class="avo-kicker">categories</div>
                     <div id="catList" class="space-y-1"></div>
                     <div class="space-y-2 pt-2" style="border-top:1px solid var(--avo-border,#2a2a2a)">
                         <input id="catName" type="text" class="input" placeholder="Category name" style="width:100%">
@@ -135,7 +135,7 @@ $extraHead = '<meta name="csrf-token" content="' . htmlspecialchars($csrfToken, 
                 </div></div>
 
                 <div class="card"><div class="card-content space-y-2">
-                    <div class="avo-kicker">// seat</div>
+                    <div class="avo-kicker">seat</div>
                     <div id="seatInspector" class="text-sm avo-muted">Select a single seat to edit its row &amp; number.</div>
                 </div></div>
             </aside>

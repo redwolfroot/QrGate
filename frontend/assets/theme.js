@@ -1,71 +1,46 @@
-/* avocloud theme controller — light/dark toggle, persisted in localStorage.
-   The early FOUC guard (applies stored theme before paint) is emitted inline
-   by partials/head.php. This file wires up the toggle button(s). */
+/* avocloud theme controller. Dark is the brand default; light is an explicit
+   choice, stored in localStorage and shown with the kit's `.avo-light` class.
+   `dark` is kept in step for Tailwind's dark: variants on older pages.
+   The early guard in partials/head.php applies the stored choice before paint;
+   this file wires up every [data-avo-theme-toggle] button. */
 (function () {
   'use strict';
 
   var STORAGE_KEY = 'avo-theme';
-  // keep in sync with avocloud.css role tokens (--avo-bg)
-  var BG = { dark: '#0B0B0B', light: '#F2EFE6' };
+  var CANVAS = { dark: '#141518', light: '#F4F6F7' }; // --avo-canvas per theme
 
   function current() {
-    return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
-  }
-
-  function stored() {
-    try { return localStorage.getItem(STORAGE_KEY); } catch (e) { return null; }
-  }
-
-  function systemDark() {
-    return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    return document.documentElement.classList.contains('avo-light') ? 'light' : 'dark';
   }
 
   function syncMeta() {
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', current() === 'dark' ? BG.dark : BG.light);
-  }
-
-  // Apply a theme to the DOM. persist=false means "follow system" — don't
-  // write a choice, so the page keeps tracking the OS preference.
-  function apply(theme, persist) {
-    var root = document.documentElement;
-    if (theme === 'light') {
-      root.classList.remove('dark');
-    } else {
-      root.classList.add('dark');
-    }
-    if (persist !== false) {
-      try { localStorage.setItem(STORAGE_KEY, theme); } catch (e) {}
-    }
-    syncButtons();
-    syncMeta();
-  }
-
-  function toggle() {
-    apply(current() === 'dark' ? 'light' : 'dark');
+    if (meta) meta.setAttribute('content', CANVAS[current()]);
   }
 
   function syncButtons() {
-    var isDark = current() === 'dark';
+    var light = current() === 'light';
     document.querySelectorAll('[data-avo-theme-toggle]').forEach(function (btn) {
-      btn.setAttribute('aria-pressed', String(isDark));
-      btn.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
-      btn.setAttribute('title', isDark ? 'Light mode' : 'Dark mode');
+      btn.setAttribute('aria-pressed', String(light));
+      btn.setAttribute('aria-label', light ? 'Switch to dark mode' : 'Switch to light mode');
+      btn.setAttribute('title', light ? 'Dark mode' : 'Light mode');
     });
   }
 
-  // expose for inline onclick or programmatic use
-  window.avoTheme = { toggle: toggle, apply: apply, current: current };
-
-  // While the user hasn't made an explicit choice, track live OS changes.
-  if (window.matchMedia) {
-    var mq = window.matchMedia('(prefers-color-scheme: dark)');
-    var onSysChange = function (e) {
-      if (!stored()) apply(e.matches ? 'dark' : 'light', false);
-    };
-    if (mq.addEventListener) mq.addEventListener('change', onSysChange);
-    else if (mq.addListener) mq.addListener(onSysChange);
+  function apply(theme) {
+    var root = document.documentElement;
+    var light = theme === 'light';
+    root.classList.toggle('avo-light', light);
+    root.classList.toggle('dark', !light);
+    try { localStorage.setItem(STORAGE_KEY, light ? 'light' : 'dark'); } catch (e) {}
+    syncButtons();
+    syncMeta();
+    document.dispatchEvent(new CustomEvent('avo:theme', { detail: { theme: light ? 'light' : 'dark' } }));
   }
+
+  function toggle() { apply(current() === 'light' ? 'dark' : 'light'); }
+
+  window.avoTheme = { toggle: toggle, apply: apply, current: current };
 
   document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('[data-avo-theme-toggle]').forEach(function (btn) {

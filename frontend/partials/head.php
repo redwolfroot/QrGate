@@ -1,6 +1,6 @@
 <?php
 /**
- * Shared <head> for QrGate (avocloud design system).
+ * Shared <head> for QrGate (avocloud brand kit v4.1).
  *
  * Set these BEFORE including, all optional:
  *   $assetBase  string  web-relative path to /frontend root. '' for top-level
@@ -12,7 +12,12 @@
  *   $forceDark  bool    force dark theme + no persisted toggle (kiosk screens).
  *   $extraHead  string  raw HTML appended inside <head> (Stripe, manifest, …).
  *
- * LOAD ORDER guaranteed here: tailwind → basecoat → avocloud.css (last).
+ * LOAD ORDER guaranteed here:
+ *   tailwind → basecoat → brand/avocloud.base.css (imports the kit) → avocloud.css
+ *
+ * Theme: dark is the brand default. A stored choice of "light" puts
+ * `.avo-light` on <html> (the kit's light theme); `dark` stays for Tailwind's
+ * dark: variants on older pages.
  */
 $assetBase  = $assetBase  ?? '';
 $pageTitle  = $pageTitle  ?? 'QrGate';
@@ -25,29 +30,24 @@ if (!isset($faviconUrl)) {
         ? PUBLIC_API_BASE . '/api/image/get/logo.png?t=' . time()
         : $assetBase . 'assets/img/avocloud-appicon-dark.svg';
 }
+$kitVersion = '4.2.0';
 ?>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo htmlspecialchars($pageTitle); ?></title>
-    <meta name="theme-color" content="#0B0B0B">
+    <meta name="theme-color" content="#141518">
 
-    <!-- early theme guard: apply stored preference before first paint (no FOUC) -->
+    <!-- theme guard: apply the stored choice before first paint (no flash) -->
     <script>
         (function () {
-            try {
-                <?php if ($forceDark): ?>
-                document.documentElement.classList.add('dark');
-                <?php else: ?>
-                var t = localStorage.getItem('avo-theme');
-                var sysDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-                // explicit choice wins; otherwise follow the OS/system preference
-                if (t === 'light') { document.documentElement.classList.remove('dark'); }
-                else if (t === 'dark') { document.documentElement.classList.add('dark'); }
-                else if (sysDark) { document.documentElement.classList.add('dark'); }
-                else { document.documentElement.classList.remove('dark'); }
-                <?php endif; ?>
-            } catch (e) { document.documentElement.classList.add('dark'); }
+            var root = document.documentElement;
+            var light = false;
+            <?php if (!$forceDark): ?>
+            try { light = localStorage.getItem('avo-theme') === 'light'; } catch (e) {}
+            <?php endif; ?>
+            root.classList.toggle('avo-light', light);
+            root.classList.toggle('dark', !light);
         })();
     </script>
 
@@ -57,12 +57,14 @@ if (!isset($faviconUrl)) {
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Quicksand:wght@300..700&display=swap" rel="stylesheet">
+    <!-- QrGate type: IBM Plex Mono for everything, Syne only for wordmarks -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@700;800&display=swap">
 
-    <!-- avocloud.css MUST load after basecoat so its token remap wins -->
-    <link rel="stylesheet" href="<?php echo $assetBase; ?>assets/avocloud.css">
+    <!-- the kit MUST load after basecoat so its theme wins -->
+    <link rel="stylesheet" href="<?php echo $assetBase; ?>assets/brand/avocloud.base.css?v=<?php echo $kitVersion; ?>">
+    <link rel="stylesheet" href="<?php echo $assetBase; ?>assets/avocloud.css?v=<?php echo $kitVersion; ?>">
     <?php if (!$forceDark): ?>
-    <script src="<?php echo $assetBase; ?>assets/theme.js" defer></script>
+    <script src="<?php echo $assetBase; ?>assets/theme.js?v=<?php echo $kitVersion; ?>" defer></script>
     <?php endif; ?>
 
     <link rel="icon" href="<?php echo htmlspecialchars($faviconUrl); ?>">

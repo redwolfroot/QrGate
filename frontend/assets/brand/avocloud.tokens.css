@@ -1,0 +1,369 @@
+/* ==========================================================================
+   avocloud · TOKENS ONLY  v4.2
+
+   The `:root` layer of the kit, split out so a property can take the VALUES
+   without shipping the components. `avocloud.css` imports this file, so the
+   full kit still behaves exactly as before and there is one definition of
+   every token, not two.
+
+   Import this one when you already have your own component CSS and only want
+   the values to have a single source — that is what avocloud.net does. Import
+   `avocloud.css` when you want the components too.
+
+   Everything here is namespaced `--avo-*`. Importing it cannot change a single
+   existing rule in a consuming stylesheet; the consumer opts in per token.
+   ========================================================================== */
+/* ---- 1 · Fonts ----------------------------------------------------------
+   The three faces avocloud.net actually loads, plus IBM Plex Mono (v4.2),
+   the one face of the UI theme (`.avo-ui`, see below). NONE is requested with a
+   variable axis — JetBrains Mono is two discrete weights, the others are
+   discrete weights too.
+   That is why kinetic type is not part of this system (§6.6): a
+   `font-variation-settings` tween on a static instance runs, writes every
+   frame, and changes nothing, with no error anywhere.
+
+   If it is ever wanted, add variable Archivo
+   (`Archivo:wdth,wght@62..125,100..900`) and widen the mono to `wght@100..800`.
+   Axis names go in ALPHABETICAL order with ranges in the same order; reversed,
+   the request silently returns a static instance. */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@300;400;500;600;700&family=Syne:wght@600;700;800&display=swap');
+
+/* ==========================================================================
+   2 · Tokens
+   ========================================================================== */
+:root {
+  /* ---- coral ramp · mode-independent, one hue, no per-theme swap -------- */
+  --avo-coral-50:  #FFEEEA;
+  --avo-coral-100: #FFD8CF;
+  --avo-coral-200: #FFB6A4;
+  --avo-coral-300: #FF9379;
+  --avo-coral-400: #FF7A5C;
+  --avo-coral-500: #FF6B4A;
+  --avo-coral-600: #ED5333;
+  --avo-coral-700: #C73D20;
+  --avo-coral-800: #9C2E16;
+  --avo-coral-900: #5F1C0D;
+  --avo-coral-rgb: 255, 107, 74;
+
+  /* ---- semantic · product UI only. Coral is brand, never status. -------- */
+  --avo-success: #46A758;
+  --avo-warning: #E0A33A;
+  --avo-error:   #DC3838;
+  --avo-info:    #3B82C4;
+
+  /* ---- roles · DARK (the default) --------------------------------------- */
+  --avo-canvas:         #000000;
+  --avo-canvas-soft:    #060606;
+  --avo-surface:        #0A0A0A;
+  --avo-surface-raised: #121214;
+  --avo-surface-high:   #1A1A1E;
+  /* The outline is the RESTING state, not a hover state. v2 kept borders at
+     .10 and brightened on hover; at that alpha the frame was a hint. */
+  --avo-line:           rgba(255,255,255,0.16);
+  --avo-line-strong:    rgba(255,255,255,0.38);
+  --avo-text:           #FFFFFF;
+  --avo-text-muted:     #7E7E7E;
+  --avo-text-muted-2:   #BBBBBB;
+  --avo-scrim:          rgba(0,0,0,0.72);
+
+  --avo-primary:        var(--avo-coral-500);
+  --avo-primary-hover:  var(--avo-coral-300);
+  /* Text ON a solid coral fill is BLACK. Black-on-coral is 7.5:1, white is
+     2.8:1. This is not a stylistic call. */
+  --avo-primary-on:     #000000;
+  /* Small coral TEXT on a light surface. Not a theme token — it is a
+     size-dependent call, so it exists in both modes and you pick it by hand. */
+  --avo-primary-text-small: var(--avo-coral-700);
+
+  /* ---- type ------------------------------------------------------------- */
+  --avo-font-brand:   'Syne', 'Space Grotesk', sans-serif;      /* wordmark + headlines */
+  --avo-font-body:    'Space Grotesk', system-ui, sans-serif;   /* body + card headings */
+  /* The counter face. Was Anton until 2026-09-16 — a whole font request for
+     one element on one page. The role survives, the face is now the brand
+     face at 700; the token stays so a consumer does not break. */
+  --avo-font-massive: var(--avo-font-brand);
+  --avo-font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+  /* `display` meant Archivo in v4.0. It is an alias now, so a consumer that
+     used it for headlines lands on the face that actually carries them. */
+  --avo-font-display: var(--avo-font-brand);
+  /* v4.2 · the wordmark is its own role, so a context that moves headlines
+     off Syne (the UI theme below) keeps the lockup in Syne. */
+  --avo-font-wordmark: 'Syne', 'Space Grotesk', sans-serif;
+  /* v4.2 · the one face the UI theme sets everything in. */
+  --avo-font-ui:       'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* The shipped minor-third scale (x1.2). `sm` is a deliberate half step:
+     body copy in a card has to sit between the mono labels and the headings,
+     and a full step either side reads too small or too loud. */
+  --avo-text-micro:     0.625rem;   /* side rail */
+  --avo-text-2xs:       0.694rem;   /* mono labels, chips, nav controls */
+  --avo-text-xs:        0.8rem;     /* buttons, mono meta */
+  --avo-text-sm:        0.9rem;     /* card body */
+  --avo-text-base:      1rem;
+  --avo-text-md:        1.2rem;     /* card headings */
+  --avo-text-lead:      clamp(1rem, 2.4vw, 1.2rem);
+  --avo-text-lg:        clamp(1.44rem, 2.6vw, 1.728rem);
+  --avo-text-display:   clamp(1.9rem, 5vw, 3.2rem);
+  --avo-text-wordmark:  clamp(1.5rem, 5.2vw, 4.4rem);
+  --avo-text-stat:      1.7rem;
+  --avo-text-kicker:    0.72rem;
+  --avo-text-serial:    0.6rem;
+  /* aliases kept so v4.0 markup keeps working */
+  --avo-text-display-1: var(--avo-text-display);
+  --avo-text-display-2: var(--avo-text-lg);
+  --avo-text-body:      var(--avo-text-base);
+  --avo-text-small:     var(--avo-text-sm);
+  --avo-text-title:     var(--avo-text-xs);
+
+  /* ---- shape ------------------------------------------------------------
+     Softened corners. 6px on controls, 8px on boxes, 4px on the corner marks
+     (they trace the box corner they sit in, so they follow it).
+
+     v3 specified `border-radius: 0` plus a 20px chamfer. It was written into
+     the guide for two releases and never implemented anywhere, so v4.1 removed
+     it from the spec rather than keep describing a site that does not exist. */
+  --avo-radius:     6px;    /* buttons, nav controls, chips, inputs, selects */
+  --avo-radius-lg:  8px;    /* cards, panels, the stat block */
+  --avo-radius-mk:  4px;    /* the corner-mark arc */
+  --avo-radius-full: 50%;   /* avatars, the CAD reveal's inscribing rings */
+
+  /* ---- glass · THE surface treatment --------------------------------------
+     A surface is a translucent DARK pane over the canvas. The nav bar is the
+     reference: it reads as black, the same as the page, and you only notice it
+     is glass when something drifts behind it.
+
+     A LIGHT tint turns every surface into a grey panel sitting on the page,
+     which is the opposite of the intent. Blur stays low for the same reason —
+     at 14px the texture behind is smeared into a wash and nothing recognisable
+     moves through it. */
+  --avo-glass-blur:   7px;
+  --avo-glass-tint:   rgba(4,4,4,0.28);
+  --avo-glass-tint-2: rgba(4,4,4,0.44);
+  /* A 1px inset top edge, not a border — the hairline motif catching light.
+     It defines the pane's edge; it should not outline it. */
+  --avo-glass-edge:        rgba(255,255,255,0.10);
+  --avo-glass-edge-raised: rgba(255,255,255,0.18);
+
+  /* corner marks: two coral arcs, top-left and bottom-right, visible at rest */
+  --avo-mk-size:         8px;
+  --avo-mk-inset:        4px;
+  --avo-mk-rest-opacity: 0.32;
+  --avo-mk-rest-scale:   0.55;
+
+  --avo-focus-w: 2px;
+  --avo-focus-offset: 3px;
+
+  /* ---- space ------------------------------------------------------------ */
+  --avo-space-1: 4px;   --avo-space-2: 8px;   --avo-space-3: 12px;
+  --avo-space-4: 16px;  --avo-space-5: 24px;  --avo-space-6: 32px;
+  --avo-space-7: 48px;  --avo-space-8: 64px;  --avo-space-9: 96px;
+  --avo-space-10: 128px;
+
+  /* ---- layout · marketing scale ----------------------------------------- */
+  --avo-maxw:          1180px;
+  --avo-container-pad: clamp(1rem, 4vw, 2.5rem);
+  --avo-section-pad-y: clamp(4rem, 10vw, 8rem);
+  --avo-measure:       60ch;
+  --avo-grid:          40px;
+
+  /* ---- z scale ----------------------------------------------------------
+     One scale, so no component has to invent a 9999. */
+  --avo-z-canvas: 0;   --avo-z-content: 1;  --avo-z-sticky: 10;
+  --avo-z-rail: 20;    --avo-z-header: 30;  --avo-z-dropdown: 40;
+  --avo-z-scrim: 50;   --avo-z-dialog: 60;  --avo-z-toast: 70;
+  --avo-z-tooltip: 80; --avo-z-curtain: 90;
+
+  /* ---- motion · the CSS half. The GSAP half is motion/motion-tokens.ts and
+     the two must agree — change a number in one, change it in both. --------- */
+  --avo-ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --avo-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --avo-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --avo-dur-micro: 0.18s;  /* hover, border, colour, focus */
+  --avo-dur-ui:    0.35s;  /* nav state, drawers, toggles */
+  --avo-dur-enter: 0.7s;   /* scroll entrances */
+  --avo-dur-sig:   2.4s;   /* the CAD reveal, played at timeScale 0.6 */
+
+  /* ---- surface levels ---------------------------------------------------
+     Glass surfaces carry no opaque background: the tint gradient IS the
+     surface, and anything solid behind it blocks exactly what is supposed to
+     show through. These are for the surfaces that are NOT glass — fields,
+     recessed wells, the dense variants. */
+  --avo-plate-fill:   var(--avo-surface);
+  --avo-plate-raised: var(--avo-surface-raised);
+  --avo-plate-high:   var(--avo-surface-high);
+  --avo-plate-line:   var(--avo-line-strong);
+
+  /* ---- texture ----------------------------------------------------------
+     One feTurbulence tile, repeated, fixed, behind every plate.
+
+     The feColorMatrix is the load-bearing part: RGB forced to white, A = red
+     − 0.55, so every sample under the threshold clamps to fully transparent.
+     What lands on the page is white specks on a transparent field with the
+     black floor untouched. Drive LUMA instead — plain turbulence, no matrix —
+     and you get a uniform grey lift about 4× the variation, which is fog.
+
+     TUNE THE THRESHOLD (−0.55), NOT THE OPACITY. Measurements in BRANDING.md §7.
+     Canvas only: never on a plate, never behind body copy, never animated. */
+  --avo-grid:       80px;
+  --avo-grid-fine:  40px;
+  --avo-grid-cross: 200px;
+
+  /* ---- Icons · Lucide -----------------------------------------------------
+     One set. https://lucide.dev — stroke icons on a 24-unit grid, which is
+     the same drawing language as the hairlines.
+
+     Stroke 1.5, not Lucide's default 2: this system draws in 1px lines and a
+     2px icon beside a 1px rule reads as a different weight of thing. */
+  --avo-icon-stroke: 1.5;
+  --avo-icon-sm: 16px;   /* inline, buttons, table cells, rail */
+  --avo-icon-md: 20px;   /* card headings, empty states */
+  --avo-icon-lg: 24px;   /* feature and section marks */
+
+  --avo-hatch: repeating-linear-gradient(45deg,
+      rgba(var(--avo-coral-rgb), 0.55) 0 1px, transparent 1px 6px);
+  --avo-hatch-period: 8.49px;     /* 6px / sin(45°) — one full stripe period */
+
+  /* ---- product UI density ----------------------------------------------- */
+  --avo-ui-pad-plate: 16px;
+  --avo-ui-pad-cell:  8px 12px;
+  --avo-ui-gap:       12px;
+  --avo-ui-row-h:     36px;
+  --avo-ui-control-h: 32px;
+  --avo-ui-control-h-compact: 28px;
+  --avo-ui-control-h-primary: 40px;
+  --avo-ui-rail-w:    220px;
+  --avo-ui-rail-w-collapsed: 56px;
+  --avo-ui-measure:   80ch;
+  --avo-ui-dialog-w:  520px;
+  --avo-ui-toast-w:   360px;
+  --avo-ui-text:      0.875rem;
+  --avo-ui-label:     0.75rem;
+  --avo-ui-num:       0.8125rem;
+}
+
+/* ---- Deprecated aliases · v3.x → v4.0 ----------------------------------
+   v4 renamed four role tokens to match the vocabulary the guide actually uses
+   (`canvas`, `line`) and gave `display` its plain meaning — the display face.
+   These keep a v3 consumer working while it migrates. They are aliases, not a
+   second set of values: there is still exactly one source for each number.
+
+     --avo-radius-sm/md  → --avo-radius   (v4.0 aliased these to 0)
+     --avo-bg            → --avo-canvas
+     --avo-bg-soft       → --avo-canvas-soft
+     --avo-border        → --avo-line
+     --avo-border-strong → --avo-line-strong
+     --avo-font-massive  is a real token again (the stat counters; Anton
+                         until 2026-09-16, now the brand face)
+     --avo-font-display  → --avo-font-brand     (v4.0 pointed it at Archivo;
+                         v4.1 points it at the face that actually carries the
+                         headlines). A v3 consumer using it for paragraphs
+                         should switch to --avo-font-body.
+
+   Delete this block once CONFORMANCE.md shows nothing depending on it. */
+:root, .avo-light, .avo-band, .avo-ui {
+  --avo-radius-sm:     var(--avo-radius);       /* → --avo-radius    */
+  --avo-radius-md:     var(--avo-radius);       /* → --avo-radius    */
+  --avo-bg:            var(--avo-canvas);
+  --avo-bg-soft:       var(--avo-canvas-soft);
+  --avo-border:        var(--avo-line);
+  --avo-border-strong: var(--avo-line-strong);
+}
+/* v4.1 inverted the button model: `.avo-btn` is the plain glass button and
+   `.avo-btn.primary` is the coral one. v4.0's ghost modifier IS the base now,
+   so both old spellings simply resolve to it. */
+.avo-btn-ghost, .avo-btn.ghost { /* → .avo-btn */ }
+
+/* ---- Light · a light-first property (a tool may legitimately be one) -----
+   Canvas and surface DIFFER here, unlike the cut band, so plates still read as
+   plates. Kept as a class rather than a media query: this is a per-product
+   decision, not a per-visitor one. */
+.avo-light {
+  --avo-canvas:         #F4F6F7;
+  --avo-canvas-soft:    #ECEFF1;
+  --avo-surface:        #FFFFFF;
+  --avo-surface-raised: #ECEFF1;
+  --avo-surface-high:   #E4E8EA;
+  --avo-line:           rgba(0,0,0,0.14);
+  --avo-line-strong:    rgba(0,0,0,0.22);
+  --avo-text:           #0A0A0A;
+  --avo-text-muted:     #555555;
+  --avo-text-muted-2:   #555555;
+  --avo-scrim:          rgba(10,10,10,0.48);
+  /* v4.2 · light glass. Before, `.avo-light` kept the DARK tint and every
+     plate turned grey on the light canvas. */
+  --avo-glass-tint:        rgba(255,255,255,0.80);
+  --avo-glass-tint-2:      rgba(255,255,255,0.94);
+  --avo-glass-edge:        rgba(255,255,255,0.95);
+  --avo-glass-edge-raised: rgba(255,255,255,1);
+  --avo-line-faint:        rgba(0,0,0,0.045);
+}
+
+/* ---- UI theme · v4.2 · dashboards, tools, shops, app surfaces -------------
+   Put `.avo-ui` on <body>. Marketing pages keep the black canvas above.
+
+   Measured on QrGate (shop + admin): pure black under pure white text, 38 %
+   outlines and a full-viewport grid made every hairline, chip and label jump
+   out, and people called the screens overwhelming. The fix is contrast, not
+   fewer components:
+
+     canvas   anthracite #141518, not black
+     surfaces one step LIGHTER than the canvas, so panels lift off the page
+              instead of sinking into it (glass is a faint light lift here)
+     lines    .08 / .16 instead of .16 / .38
+     text     #E9E9EB, not #FFFFFF
+     type     ONE calm mono face for everything; Syne only for wordmarks
+     texture  none (the kit hides the grid layers under .avo-ui)
+
+   Every token DERIVED from these (plate-*, font-display, the v3 aliases) is
+   restated, because a custom property that reads var() is resolved where it
+   is declared: declared on :root it would keep the marketing value. */
+.avo-ui {
+  --avo-canvas:         #141518;
+  --avo-canvas-soft:    #17181B;
+  --avo-surface:        #1B1C20;
+  --avo-surface-raised: #212227;
+  --avo-surface-high:   #292A30;
+  --avo-line:           rgba(255,255,255,0.08);
+  --avo-line-strong:    rgba(255,255,255,0.16);
+  --avo-text:           #E9E9EB;
+  --avo-text-muted:     #8D8E94;
+  --avo-text-muted-2:   #B3B4B9;
+  --avo-scrim:          rgba(8,8,10,0.66);
+
+  --avo-glass-tint:        rgba(255,255,255,0.025);
+  --avo-glass-tint-2:      rgba(255,255,255,0.04);
+  --avo-glass-edge:        rgba(255,255,255,0.05);
+  --avo-glass-edge-raised: rgba(255,255,255,0.09);
+
+  --avo-font-mono:     var(--avo-font-ui);
+  --avo-font-body:     var(--avo-font-ui);
+  --avo-font-brand:    var(--avo-font-ui);
+  --avo-font-display:  var(--avo-font-ui);
+  --avo-font-massive:  var(--avo-font-ui);
+
+  --avo-plate-fill:   var(--avo-surface);
+  --avo-plate-raised: var(--avo-surface-raised);
+  --avo-plate-high:   var(--avo-surface-high);
+  --avo-plate-line:   var(--avo-line-strong);
+}
+/* Light UI: the light roles, restated on the body (the `.avo-ui` block above
+   sits closer to the content than `.avo-light` on <html> and would win). */
+.avo-light .avo-ui, .avo-light.avo-ui {
+  --avo-canvas:         #F4F6F7;
+  --avo-canvas-soft:    #ECEFF1;
+  --avo-surface:        #FFFFFF;
+  --avo-surface-raised: #ECEFF1;
+  --avo-surface-high:   #E4E8EA;
+  --avo-line:           rgba(0,0,0,0.14);
+  --avo-line-strong:    rgba(0,0,0,0.22);
+  --avo-text:           #0A0A0A;
+  --avo-text-muted:     #555555;
+  --avo-text-muted-2:   #555555;
+  --avo-scrim:          rgba(10,10,10,0.48);
+  --avo-glass-tint:        rgba(255,255,255,0.80);
+  --avo-glass-tint-2:      rgba(255,255,255,0.94);
+  --avo-glass-edge:        rgba(255,255,255,0.95);
+  --avo-glass-edge-raised: rgba(255,255,255,1);
+}

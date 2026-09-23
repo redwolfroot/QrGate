@@ -1,0 +1,513 @@
+/* ==========================================================================
+   avocloud · base-layer theme  v4.2
+
+   Themes a third-party component base — Basecoat (server-rendered HTML, Jinja,
+   htmx) or shadcn/ui (React) — into the avocloud system.
+
+   WHY A BASE LAYER AT ALL. The hard part of a component library is behaviour,
+   not appearance: focus trapping, keyboard navigation, ARIA wiring, the
+   combobox, the command palette. Both bases solve that and neither has an
+   opinion we have to keep. The appearance is ours.
+
+   v4.1: the corner mapping is now a straight pass-through — the base's
+   `--radius-*` namespace lands on avocloud's own 6px/8px. v4.0 zeroed it and
+   applied a chamfer with clip-path, which matched a spec that was never
+   implemented on any avocloud property. See CHANGELOG.
+
+   WHY ONE FILE FOR BOTH. Basecoat and shadcn read the same theming contract —
+   Tailwind v4 `@theme` namespaces (`--color-background`, `--radius-md`, …).
+   Verified against basecoat-css 1.0.2: it reads its colours straight from
+   `var(--color-primary)` and its corners from `var(--radius-md)`. shadcn's own
+   setup declares bare names (`--background`, `--primary`, `--radius`) and
+   bridges them into the same namespaces, so this file sets BOTH spellings and
+   works either way.
+
+   USE
+     Basecoat (Quart + Jinja, htmx, anything server-rendered):
+       @import "tailwindcss";
+       @import "basecoat-css";
+       @import "avocloud.base.css";        ← after, always
+
+     shadcn (React / Astro):
+       …your shadcn globals.css…
+       @import "avocloud.base.css";
+
+     Either way, also import `avocloud.css` for the avocloud-native pieces the
+     base does not have: the plate, the corner brackets, the kicker, the serial,
+     the hatch, the grain.
+
+   v4.2: `.avo-ui` is in the contract's selector list, so the base layer
+   picks up the UI theme (anthracite canvas, lighter surfaces) wherever the
+   body carries it — the derived names are re-resolved on that element.
+
+   THE RULE THIS FILE EXISTS TO ENFORCE
+     Never paste a base-layer component and ship it unthemed. The worst drift
+     this brand has suffered came from exactly that — a pasted shadcn hero with
+     48px radii, pill CTAs and a coral wash, copied into four files (see
+     CHANGELOG). The base supplies behaviour. Appearance comes from here.
+   ========================================================================== */
+
+@import "./avocloud.css?v=4.2.0";   /* the query is a cache buster; bump it with the kit */
+
+/* ---- 1 · The contract ----------------------------------------------------
+   Both bases resolve every colour and corner through these names.
+
+   They are DERIVED from the `--avo-*` tokens rather than restated, so there is
+   one source for every value and `.avo-light` flips the base layer for free.
+
+   Declared in plain `:root`, not only in `@theme`: `@theme` is a Tailwind
+   build-time construct, so with the Basecoat CDN build — a Quart app that
+   wants no Node toolchain — it would do nothing at all. The runtime CSS reads
+   `var(--color-primary)` directly, so plain custom properties are what
+   actually theme it. The `@theme` block below is additionally there for
+   projects that DO compile Tailwind, where it also registers the utility
+   namespaces. */
+:root, .avo-light, .avo-band, .avo-ui {
+  --color-background:            var(--avo-canvas);
+  --color-foreground:            var(--avo-text);
+
+  --color-card:                  var(--avo-surface);
+  --color-card-foreground:       var(--avo-text);
+  --color-popover:               var(--avo-surface-raised);
+  --color-popover-foreground:    var(--avo-text);
+
+  /* Coral, and BLACK on it. Black-on-coral is 7.5:1, white is 2.8:1 — this is
+     the one mapping most likely to be "corrected" back to white. Don't. */
+  --color-primary:               var(--avo-primary);
+  --color-primary-foreground:    var(--avo-primary-on);
+
+  --color-secondary:             var(--avo-surface-raised);
+  --color-secondary-foreground:  var(--avo-text);
+  --color-muted:                 var(--avo-surface-raised);
+  --color-muted-foreground:      var(--avo-text-muted);
+  --color-accent:                var(--avo-surface-high);
+  --color-accent-foreground:     var(--avo-text);
+
+  /* Status, not brand. Coral never means "danger". */
+  --color-destructive:           var(--avo-error);
+  --color-destructive-foreground:#FFFFFF;
+
+  /* The outline is the RESTING state, so `border` maps to the strong line. */
+  --color-border:                var(--avo-line-strong);
+  --color-input:                 var(--avo-line-strong);
+  --color-ring:                  var(--avo-primary);
+
+  --color-sidebar:                   var(--avo-surface);
+  --color-sidebar-foreground:        var(--avo-text-muted);
+  --color-sidebar-accent:            var(--avo-surface-raised);
+  --color-sidebar-accent-foreground: var(--avo-text);
+  --color-sidebar-border:            var(--avo-line);
+  --color-sidebar-ring:              var(--avo-primary);
+
+  /* The base's radius namespace maps straight onto avocloud's own — 6px on
+     controls, 8px on boxes. Nothing to fight: 23 rules resolve --radius-md
+     alone and they all land on the right value. */
+  --radius-sm:  var(--avo-radius);      /* 6px */
+  --radius-md:  var(--avo-radius);      /* 6px — controls */
+  --radius-lg:  var(--avo-radius-lg);   /* 8px — cards, panels */
+  --radius-xl:  var(--avo-radius-lg);
+  --radius-2xl: var(--avo-radius-lg);
+  --radius-4xl: var(--avo-radius-lg);
+
+  /* shadcn declares bare names and bridges them into the namespaces above,
+     so set those too. Harmless where they are unused. */
+  --background: var(--avo-canvas);          --foreground: var(--avo-text);
+  --card: var(--avo-surface);               --card-foreground: var(--avo-text);
+  --popover: var(--avo-surface-raised);     --popover-foreground: var(--avo-text);
+  --primary: var(--avo-primary);            --primary-foreground: var(--avo-primary-on);
+  --secondary: var(--avo-surface-raised);   --secondary-foreground: var(--avo-text);
+  --muted: var(--avo-surface-raised);       --muted-foreground: var(--avo-text-muted);
+  --accent: var(--avo-surface-high);        --accent-foreground: var(--avo-text);
+  --destructive: var(--avo-error);          --destructive-foreground: #FFFFFF;
+  --border: var(--avo-line-strong);         --input: var(--avo-line-strong);
+  --ring: var(--avo-primary);
+  --sidebar: var(--avo-surface);            --sidebar-foreground: var(--avo-text-muted);
+  --sidebar-accent: var(--avo-surface-raised);
+  --sidebar-accent-foreground: var(--avo-text);
+  --sidebar-border: var(--avo-line);        --sidebar-ring: var(--avo-primary);
+  --radius: 6px;
+}
+
+/* For projects that compile Tailwind. Literals, because `@theme` values feed
+   utility generation. Where both apply, the `:root` block above wins on order,
+   and they agree by construction. */
+@theme {
+  --color-background: #000000;   --color-foreground: #FFFFFF;
+  --color-card: #0A0A0A;         --color-card-foreground: #FFFFFF;
+  --color-popover: #121214;      --color-popover-foreground: #FFFFFF;
+  --color-primary: #FF6B4A;      --color-primary-foreground: #000000;
+  --color-secondary: #121214;    --color-secondary-foreground: #FFFFFF;
+  --color-muted: #121214;        --color-muted-foreground: #7E7E7E;
+  --color-accent: #1A1A1E;       --color-accent-foreground: #FFFFFF;
+  --color-destructive: #DC3838;  --color-destructive-foreground: #FFFFFF;
+  --color-border: rgba(255,255,255,0.38);
+  --color-input:  rgba(255,255,255,0.38);
+  --color-ring:   #FF6B4A;
+  --color-sidebar: #0A0A0A;      --color-sidebar-foreground: #7E7E7E;
+  --color-sidebar-accent: #121214;
+  --color-sidebar-accent-foreground: #FFFFFF;
+  --color-sidebar-border: rgba(255,255,255,0.16);
+  --color-sidebar-ring: #FF6B4A;
+  --radius-sm: 6px; --radius-md: 6px; --radius-lg: 8px;
+  --radius-xl: 8px; --radius-2xl: 8px; --radius-4xl: 8px;
+  --font-sans: 'Space Grotesk', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+}
+
+/* ==========================================================================
+   2 · What the contract cannot express
+   ========================================================================== */
+
+/* ---- Rounding the variables don't reach ---------------------------------
+   The `--radius-*` mapping above covers every corner that resolves through a
+   variable. It does NOT reach `rounded-full`, which Tailwind compiles to a
+   literal `border-radius: 3.40282e38px` — 14 rules in basecoat-css 1.0.2.
+   Those are pills: badges, switches, some scrollbars. avocloud has no pill,
+   so they come back to the control radius. Avatars keep their circle. */
+.badge, .progress, .progress *, .slider, .slider * {
+  border-radius: var(--avo-radius) !important;
+}
+.avatar, .avatar * { border-radius: 50% !important; }
+
+/* ---- Toggles ------------------------------------------------------------
+   The base draws boxed controls on `.input[type=…]` and `[role=switch]`.
+   avocloud draws them as MONO GLYPHS — `[x]` / `[ ]`, `(o)` / `( )`,
+   `[ ON  ]` / `[ OFF ]` — so they match the kit and the `.avo-chip` bracket
+   language. Reasoning in avocloud.css and BRANDING.md §9.
+
+   Both of the base's pseudo-elements have to be neutralised, not just one:
+   the checkbox draws its tick in `::after` and the switch draws its knob in
+   `::before`. Leave either alone and the glyph renders on top of a leftover
+   box or a stray circle. */
+.input[type="checkbox"], .field > input[type="checkbox"],
+.input[type="radio"],    .field > input[type="radio"] {
+  appearance: none !important;
+  width: auto !important; height: auto !important;
+  min-width: 24px; min-height: 24px;
+  flex: 0 0 auto;
+  border: 0 !important;
+  background: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--avo-font-mono);
+  font-size: var(--avo-text-xs, 0.8rem);
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: var(--avo-text-muted) !important;
+  white-space: pre;
+  cursor: pointer;
+}
+[role="switch"] { min-width: 52px; }
+
+/* Neutralise the base's own tick, dot and knob — all three, and their
+   POSITIONING as well as their content. The base absolutely-positions the
+   checked radio's `::before` (it was the dot), so resetting only `content`
+   leaves the glyph out of flow and the checked row sits a character to the
+   right of its neighbours. Measured: checked `::before` at `position:
+   absolute`, width 8px; unchecked at `static`, width 25px. */
+.input[type="checkbox"]::after, .field > input[type="checkbox"]::after,
+.input[type="radio"]::after,    .field > input[type="radio"]::after {
+  content: none !important;
+}
+.input[type="checkbox"]::before, .field > input[type="checkbox"]::before,
+.input[type="radio"]::before,    .field > input[type="radio"]::before {
+  position: static !important;
+  width: auto !important; height: auto !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  background: none !important;
+  translate: none !important;
+  transform: none !important;
+  -webkit-mask: none !important; mask: none !important;
+}
+[role="switch"]::before {
+  position: static !important;
+  width: auto !important; height: auto !important;
+  border-radius: 0 !important;
+  background: none !important;
+  translate: none !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.input[type="checkbox"]:not([role="switch"])::before,
+.field > input[type="checkbox"]:not([role="switch"])::before { content: "[ ]"; }
+.input[type="radio"]::before, .field > input[type="radio"]::before { content: "( )"; }
+[role="switch"]::before { content: "[ OFF ]"; }
+
+.input[type="checkbox"]:checked, .field > input[type="checkbox"]:checked,
+.input[type="radio"]:checked,    .field > input[type="radio"]:checked {
+  color: var(--avo-primary) !important;
+}
+.input[type="checkbox"]:checked:not([role="switch"])::before,
+.field > input[type="checkbox"]:checked:not([role="switch"])::before { content: "[x]"; }
+.input[type="radio"]:checked::before, .field > input[type="radio"]:checked::before { content: "(o)"; }
+[role="switch"]:checked::before { content: "[ ON  ]"; }
+.input[type="checkbox"]:indeterminate::before { content: "[-]"; }
+
+/* ---- Glass · the treatment no token can carry ---------------------------
+   The base ships opaque surfaces. avocloud's surfaces are translucent dark
+   panes over the canvas: a two-stop tint gradient, a low blur, and a 1px inset
+   top edge. Applied to the surfaces that HOLD CONTENT — never to a chip, a
+   badge or a table row, because backdrop-filter costs a backdrop
+   re-rasterisation per frame and scales with radius x area. */
+.card, .sidebar, .alert {
+  background-color: transparent;
+  background-image: linear-gradient(to bottom, var(--avo-glass-tint), var(--avo-glass-tint-2));
+  -webkit-backdrop-filter: blur(var(--avo-glass-blur)) saturate(1.15);
+          backdrop-filter: blur(var(--avo-glass-blur)) saturate(1.15);
+  box-shadow: inset 0 1px 0 var(--avo-glass-edge);
+  border: 1px solid var(--avo-line);
+}
+
+/* Floating surfaces are OPAQUE. They sit above the page, not on the canvas,
+   and glass needs texture behind it to read as glass — behind a modal there is
+   a scrim, and blurring a scrim gives mud.
+
+   `margin: auto` is re-stated because Tailwind preflight ships
+   `*, ::backdrop { margin: 0 }`, and that beats the UA rule that centres a
+   modal `<dialog>`. Without it the modal sits in the top-left corner. */
+.dialog, .alert-dialog, .popover, .dropdown-menu, .toast, .command, .combobox {
+  background-color: var(--avo-surface-raised) !important;
+  background-image: none !important;
+  -webkit-backdrop-filter: none !important;
+          backdrop-filter: none !important;
+  border: 1px solid var(--avo-line-strong) !important;
+  box-shadow: inset 0 1px 0 var(--avo-glass-edge) !important;
+}
+.dialog, .alert-dialog { margin: auto !important; }
+
+/* A modal blocks clicks and focus by itself, but not scrolling — see the note
+   in avocloud.css. The base's own dialogs need the same lock. */
+html:has(dialog:modal), html:has(dialog:modal) body { overflow: hidden !important; }
+html:has(dialog.dialog[open]), html:has(dialog.dialog[open]) body,
+html:has(dialog.alert-dialog[open]), html:has(dialog.alert-dialog[open]) body { overflow: hidden !important; }
+
+/* No drop shadows. §1: if a surface needs to separate from the canvas it gets
+   an edge, not a shadow — and the inset top edge above is that edge. */
+.card, .dialog, .popover, .dropdown-menu, .toast, .alert, .badge, .btn, .input, .select, .textarea {
+  --tw-shadow: 0 0 #0000;
+  --tw-shadow-colored: 0 0 #0000;
+}
+
+/* ==========================================================================
+   3 · avocloud voice on the base's components
+   ========================================================================== */
+
+/* ---- Buttons, declared outright -----------------------------------------
+   NOT inherited from the base, on purpose.
+
+   Basecoat ships its components inside `@layer components`, and **an unlayered
+   rule beats a layered one regardless of specificity**. Everything in this
+   file and in avocloud.css is unlayered, so avocloud's opt-in reset
+   (`.avo-reset :where(button…) { background: none }`, 0-1-0) was beating
+   basecoat's `.btn:not([data-variant])` (0-2-0) and the primary button
+   rendered transparent with white text.
+
+   Restating the variants here fixes that without a cascade trick, and it is
+   what a theme should do anyway: this is the brand's button. The base still
+   supplies the layout, the sizes, the icon slots and the focus behaviour. */
+.btn:not([data-variant]), .btn[data-variant="primary"] {
+  background-color: var(--avo-primary);
+  color: var(--avo-primary-on);          /* black on coral. Always. */
+  border: 1px solid var(--avo-primary);
+}
+.btn:not([data-variant]):hover, .btn[data-variant="primary"]:hover {
+  background-color: var(--avo-primary-hover);
+  border-color: var(--avo-primary-hover);
+}
+.btn[data-variant="secondary"] {
+  background-color: var(--avo-surface-raised);
+  color: var(--avo-text);
+  border: 1px solid var(--avo-line-strong);
+}
+.btn[data-variant="outline"], .btn[data-variant="ghost"] {
+  background-color: transparent;
+  color: var(--avo-text);
+  border: 1px solid var(--avo-line-strong);
+}
+.btn[data-variant="ghost"] { border-color: transparent; }
+.btn[data-variant="outline"]:hover, .btn[data-variant="ghost"]:hover {
+  border-color: var(--avo-primary);
+  color: var(--avo-text);
+  background-color: color-mix(in srgb, var(--avo-primary) 10%, transparent);
+}
+.btn[data-variant="destructive"] {
+  background-color: var(--avo-error);
+  color: #FFFFFF;
+  border: 1px solid var(--avo-error);
+}
+.btn[data-variant="link"] {
+  background: none; border: 0; color: var(--avo-primary);
+}
+.btn[disabled], .btn[aria-disabled="true"] {
+  background-color: transparent;
+  border-color: var(--avo-line);
+  color: var(--avo-text-muted);
+  cursor: not-allowed;
+}
+
+/* Mono is the UI language: buttons, labels, badges, table headers, nav. */
+.btn, .label, .badge, .sidebar a, .sidebar button, .tabs button, .table th {
+  font-family: var(--avo-font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.btn { font-weight: 500; font-size: var(--avo-text-title); }
+.label, .badge, .table th { font-size: var(--avo-ui-label); letter-spacing: 0.12em; }
+
+/* ---- Badges default to NEUTRAL, not coral -------------------------------
+   The base's default badge variant is `primary`, i.e. coral. That hands you
+   the one reserved colour on the single most repeated element in a dashboard:
+   a status column of six rows becomes six coral blocks, where §3 allows one
+   per view — and §9 says coral is brand, never status.
+
+   Found by composing a real screen, not by looking at the component alone.
+   Coral is still one word away: `data-variant="primary"`. */
+.badge:not([data-variant]) {
+  background-color: transparent;
+  color: var(--avo-text-muted);
+  border: 1px solid var(--avo-line);
+}
+.badge[data-variant="primary"] {
+  background-color: var(--avo-primary);
+  color: var(--avo-primary-on);
+  border: 1px solid var(--avo-primary);
+}
+.badge[data-variant="secondary"] {
+  background-color: var(--avo-surface-raised);
+  color: var(--avo-text);
+  border: 1px solid var(--avo-line);
+}
+.badge[data-variant="destructive"] {
+  background-color: transparent;
+  color: var(--avo-error);
+  border: 1px solid var(--avo-error);
+}
+
+/* Same reasoning for the active page in a pager: it is a position readout, not
+   the primary action. It gets the struck line, and coral stays spendable. */
+.avo-pager > [aria-current="page"] {
+  background: var(--avo-surface-raised);
+  color: var(--avo-text);
+  border-color: var(--avo-line-strong);
+  box-shadow: inset 0 -2px 0 var(--avo-primary);
+}
+
+/* ---- Icons · Lucide -------------------------------------------------------
+   The base ships Lucide too, so this only has to correct the weight and pin
+   it: stroke 1.5 instead of Lucide's default 2, and
+   `vector-effect: non-scaling-stroke` so a 16px icon and a 24px icon draw the
+   same line. Without it a Lucide glyph on its 24-unit grid renders at
+   1.5 × 16/24 = 1px in a button and 1.5px in a card heading. */
+.btn svg, .input-group svg, .field svg, .card svg, .sidebar svg,
+.dropdown-menu svg, .alert svg, .badge svg, .table svg, .tabs svg,
+.toast svg, .combobox svg, .command svg, .breadcrumb svg, .pagination svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: var(--avo-icon-stroke) !important;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+.btn svg *, .input-group svg *, .field svg *, .card svg *, .sidebar svg *,
+.dropdown-menu svg *, .alert svg *, .badge svg *, .table svg *, .tabs svg *,
+.toast svg *, .combobox svg *, .command svg *, .breadcrumb svg *, .pagination svg * {
+  vector-effect: non-scaling-stroke;
+}
+/* In a button the icon tracks the label instead of a fixed 16px step, so it
+   stays proportional across the control scale. */
+.btn svg:not([class*="size-"]) { width: 1.05em !important; height: 1.05em !important; }
+
+/* ---- One row, one height -------------------------------------------------
+   The base ships its own control scale — inputs and default buttons at 36px,
+   `sm` at 32px, `lg` at 40px, and `.input[data-size=sm]` ignoring its own size
+   entirely. Put an input next to a button and they disagree by 4px, which is
+   the most visible way a UI looks unassembled and the least visible in CSS,
+   because each component is fine on its own.
+
+   Everything resolves to the avocloud scale instead (§9):
+     28px compact · 32px default · 40px primary · 24px icon-only.
+   The textarea is exempt — it is multi-line and sizes to its content. */
+.btn, .input, .select, .field > input:not([type="checkbox"]):not([type="radio"]), .field > select {
+  height: var(--avo-ui-control-h) !important;
+}
+.btn[data-size="sm"], .input[data-size="sm"], .select[data-size="sm"] {
+  height: var(--avo-ui-control-h-compact) !important;
+}
+.btn[data-size="lg"], .input[data-size="lg"], .select[data-size="lg"] {
+  height: var(--avo-ui-control-h-primary) !important;
+}
+/* icon-only stays square at the accessibility floor */
+.btn[data-size="xs"], .btn[data-size="icon-xs"] { height: 24px !important; min-width: 24px; }
+.btn[data-size="icon"] { height: var(--avo-ui-control-h) !important; min-width: var(--avo-ui-control-h); }
+.btn[data-size="icon-sm"] { height: var(--avo-ui-control-h-compact) !important; min-width: var(--avo-ui-control-h-compact); }
+.btn[data-size="icon-lg"] { height: var(--avo-ui-control-h-primary) !important; min-width: var(--avo-ui-control-h-primary); }
+.textarea, .field > textarea { height: auto !important; }
+
+/* Fields carry a fill (§9). The base leaves them transparent, which reads as a
+   hole in the plate they sit on rather than as a control. */
+.input, .select, .textarea, .field > input, .field > select, .field > textarea {
+  background-color: var(--avo-plate-fill);
+  font-family: var(--avo-font-mono);
+}
+.input::placeholder, .textarea::placeholder { color: var(--avo-text-muted); }
+
+/* Tables: no zebra, one hairline per row, numbers mono and tabular. */
+.table tbody tr { background: none !important; }
+/* §9 density: a row is 36px, a cell is 8px/12px. The base runs tighter than
+   the avocloud product scale, which is a different decision, not a smaller
+   version of the same one. */
+.table td { height: var(--avo-ui-row-h); padding: var(--avo-ui-pad-cell); }
+.table th { padding: var(--avo-ui-pad-cell); }
+.table td, .table th { border-bottom: 1px solid var(--avo-line); }
+.table th { border-bottom-color: var(--avo-line-strong); }
+.table tbody tr:hover { background: var(--avo-surface-raised) !important; }
+.table tbody tr[aria-selected="true"], .table tbody tr[data-state="selected"] {
+  background: var(--avo-surface-raised) !important;
+  box-shadow: inset 2px 0 0 var(--avo-primary);
+}
+.table .num, .table td:has(+ .num), .table [data-numeric] {
+  font-family: var(--avo-font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Tabs and sidebar: active is a struck line plus a colour, never colour alone. */
+.tabs [aria-selected="true"], .tabs [data-state="active"] {
+  box-shadow: inset 0 -2px 0 var(--avo-primary);
+  color: var(--avo-text);
+}
+.sidebar [aria-current="page"], .sidebar .active, .sidebar [data-active="true"] {
+  box-shadow: inset 2px 0 0 var(--avo-primary);
+  color: var(--avo-text);
+}
+
+/* Loading is coral marks at a constant period, marching (§9): the 45° hatch
+   sliding sideways as a bar, an even tick ring rotating as a spinner. A spinner
+   IS a shape this system owns now — that changed in v4.1; it did not before. */
+.progress {
+  height: 6px !important;
+  background: var(--avo-hatch) !important;
+  background-size: var(--avo-hatch-period) var(--avo-hatch-period) !important;
+  animation: avo-march 0.6s linear infinite;
+}
+.progress > * { display: none !important; }
+@media (prefers-reduced-motion: reduce) { .progress { animation: none; } }
+
+/* Skeletons pulse; they do not shimmer. */
+.skeleton { background: var(--avo-surface-raised) !important; }
+
+/* Focus is the ring, and it must stay distinguishable from hover (§10). */
+:focus-visible { outline: 2px solid var(--avo-primary); outline-offset: 3px; }
+
+/* Hover is a hard state change (§5). The base transitions colour on almost
+   everything; that also wedges the value on a theme swap — see the note in
+   avocloud.css. Geometry and opacity only. */
+.btn, .card, .input, .select, .textarea, .badge, .table tbody tr,
+.sidebar a, .sidebar button, .tabs button, .dropdown-menu [role="menuitem"] {
+  transition-property: transform, opacity !important;
+  transition-duration: var(--avo-dur-micro) !important;
+  transition-timing-function: linear !important;
+}

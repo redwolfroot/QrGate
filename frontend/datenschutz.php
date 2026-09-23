@@ -65,7 +65,7 @@ $extraHead = <<<HTML
 HTML;
 ?>
 <!DOCTYPE html>
-<html lang="<?php echo $current_language; ?>">
+<html lang="<?php echo $current_language; ?>" class="avo-ui">
 <?php include __DIR__ . '/partials/head.php'; ?>
 <body class="bg-background text-foreground min-h-screen flex flex-col pt-1">
 
@@ -82,7 +82,7 @@ HTML;
             <?php echo $is_de ? 'Zurück' : 'Back'; ?>
         </a>
 
-        <span class="absolute left-1/2 -translate-x-1/2 text-sm font-bold text-muted-foreground" style="font-family:var(--avo-font-display)">
+        <span class="absolute left-1/2 -translate-x-1/2 text-sm font-bold text-muted-foreground qg-wordmark">
             <?php echo $orga_name; ?>
         </span>
 
@@ -99,7 +99,7 @@ HTML;
 
         <?php if ($is_de): ?>
 
-        <div class="section-label flex items-center gap-3 mb-1"><span class="avo-kicker">// DSGVO</span></div>
+        <div class="section-label flex items-center gap-3 mb-1"><span class="avo-kicker">DSGVO</span></div>
         <h1 class="text-4xl font-extrabold tracking-tight mb-2" style="font-size:clamp(1.8rem,4vw,2.6rem)">Daten<span class="avo-hl">schutz</span>erklärung</h1>
         <p class="text-muted-foreground text-sm mb-10 pb-8 border-b border-border">
             Gültig für den Ticketshop von <strong class="text-foreground"><?php echo $orga_name; ?></strong>
@@ -247,7 +247,7 @@ HTML;
 
         <?php else: ?>
 
-        <div class="section-label flex items-center gap-3 mb-1"><span class="avo-kicker">// GDPR</span></div>
+        <div class="section-label flex items-center gap-3 mb-1"><span class="avo-kicker">GDPR</span></div>
         <h1 class="text-4xl font-extrabold tracking-tight mb-2" style="font-size:clamp(1.8rem,4vw,2.6rem)">Privacy <span class="avo-hl">Policy</span></h1>
         <p class="text-muted-foreground text-sm mb-10 pb-8 border-b border-border">
             Applicable to the ticket shop of <strong class="text-foreground"><?php echo $orga_name; ?></strong>

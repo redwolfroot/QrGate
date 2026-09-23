@@ -26,7 +26,7 @@ $forceDark = true;
 $extraHead = '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" async>';
 ?>
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" class="avo-ui">
 
 <?php include __DIR__ . '/../partials/head.php'; ?>
 <body>
@@ -352,7 +352,7 @@ $extraHead = '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/lib
     <main>
 
         <div class="content-container">
-            <div class="avo-kicker" style="font-size: 1rem; margin-bottom: 0.5rem;">// now showing</div>
+            <div class="avo-kicker" style="font-size: 1rem; margin-bottom: 0.5rem;">now showing</div>
             <h1 class="welcome-text" id="welcomeText" style="display: block;" aria-live="polite">
                 <i class="fas fa-theater-masks" style="animation: bounce 1s infinite;"></i>
                 <br>

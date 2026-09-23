@@ -3,7 +3,7 @@ import quart
 from typing import Dict, Any
 from reds_simple_logger import Logger
 from assets.data import load_show, _load_stats_dict, _save_stats_dict, log_sale
-from assets.data import checkin_stats, recent_checkins
+from assets.data import checkin_stats, recent_checkins, dashboard_overview, recent_orders
 from assets.timeutil import today_iso
 import config.conf as config # type: ignore
 
@@ -93,4 +93,27 @@ def get_checkins_api(app=quart.Quart):
             }), 200
         except Exception as e:
             logger.error(f"Error getting checkins: {str(e)}")
+            return quart.jsonify({"status": "error", "message": "Internal server error"}), 500
+
+    @app.route("/api/stats/overview", methods=["GET"])   # type: ignore
+    async def get_overview():
+        """Everything the admin dashboard shows, in one poll: per-date sales
+        from the tickets themselves, check-ins, open checkouts, daily income
+        and the latest orders."""
+        key = quart.request.headers.get("Authorization")
+        if not key or not hmac.compare_digest(str(key), str(config.Auth.auth_key)):
+            return quart.jsonify({"status": "error", "message": "Unauthorized"}), 401
+        try:
+            return quart.jsonify({
+                "status": "success",
+                "data": {
+                    **dashboard_overview(),
+                    "today": today_iso(),
+                    "daily": get_statistics(),
+                    "recent_checkins": recent_checkins(8),
+                    "recent_orders": recent_orders(10),
+                },
+            }), 200
+        except Exception as e:
+            logger.error(f"Error getting overview: {str(e)}")
             return quart.jsonify({"status": "error", "message": "Internal server error"}), 500

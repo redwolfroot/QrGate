@@ -129,13 +129,13 @@ $extraHead = <<<HTML
 HTML;
 ?>
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" class="avo-ui">
 
 <?php include __DIR__ . '/../partials/head.php'; ?>
 
 <body>
     <div class="container mx-auto px-4 py-8 <?php echo isset($_SESSION['has_voted']) && $_SESSION['has_voted'] === true ? 'blur-sm' : ''; ?>" style="position: relative;">
-        <div class="avo-kicker mb-2">// feedback</div>
+        <div class="avo-kicker mb-2">feedback</div>
         <h1 class="text-3xl font-bold mb-4">
             <i class="fas fa-pencil-alt icon"></i>
             Submit your <span class="avo-hl">feedback</span> to "<?php echo htmlspecialchars($shows['title'] ?? ''); ?>" from <?php echo htmlspecialchars($shows['orga_name'] ?? ''); ?>

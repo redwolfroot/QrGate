@@ -346,167 +346,82 @@ function getCurrentImages() {
     }
 }
 
+function dateApiError($code, $json, $fallback) {
+    $messages = [
+        'date_taken'  => 'An diesem Datum gibt es schon einen Termin.',
+        'in_use'      => 'Für diesen Termin gibt es schon Tickets oder offene Bestellungen. Datum und Platzwahl lassen sich dann nicht mehr ändern, und löschen geht erst, wenn alle Tickets storniert sind.',
+        'below_sold'  => 'Die Kapazität darf nicht kleiner sein als die bereits verkauften oder reservierten Tickets.',
+        'not_found'   => 'Termin nicht gefunden.',
+        'missing_fields' => 'Datum und Uhrzeit sind Pflichtfelder.',
+        'invalid_values' => 'Bitte prüfe die Eingaben.',
+    ];
+    $key = is_array($json) ? ($json['message'] ?? '') : '';
+    http_response_code($code >= 400 ? $code : 500);
+    echo json_encode(['status' => 'error', 'code' => $key, 'message' => $messages[$key] ?? ($key ?: $fallback)]);
+}
+
+// Days go through the backend's atomic date endpoints: availability is moved
+// by the capacity delta there, never overwritten with a value read earlier.
 function addDay() {
     $input = json_decode(file_get_contents('php://input'), true);
-    
-    if (!$input || !isset($input['date']) || !isset($input['time']) || !isset($input['tickets']) || !isset($input['price'])) {
+    if (!$input || empty($input['date']) || empty($input['time']) || !isset($input['tickets']) || !isset($input['price'])) {
         http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => 'Missing required fields']);
+        echo json_encode(['status' => 'error', 'message' => 'Datum, Uhrzeit, Kapazität und Preis sind Pflichtfelder.']);
         return;
     }
-
-    
-    $shows = getShows();
-    if (!$shows) {
-        http_response_code(500);
-        echo json_encode(['status' => 'error', 'message' => 'Could not load shows']);
-        return;
-    }
-
-    
-    $newDateId = $input['dateId'] ?? null;
-    if (empty($newDateId)) {
-        
-        $existingIds = array_keys($shows['dates'] ?? []);
-        if (empty($existingIds)) {
-            $newDateId = 'day_' . time();
-        } else {
-            
-            $timestamps = [];
-            foreach ($existingIds as $id) {
-                if (strpos($id, 'day_') === 0) {
-                    $timestamps[] = (int)substr($id, 4);
-                }
-            }
-            $newDateId = 'day_' . (max($timestamps) + 1);
-        }
-    }
-    
-    
-    if (isset($shows['dates'][$newDateId])) {
-        http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => 'Date ID already exists']);
-        return;
-    }
-    
-    
-    $shows['dates'][$newDateId] = [
-        'date' => $input['date'],
-        'time' => $input['time'],
-        'tickets' => (int)$input['tickets'],
-        'tickets_available' => (int)$input['tickets'],
-        'price' => (string)$input['price'],
-        'location' => isset($input['location']) ? (string)$input['location'] : '',
-        'seating' => !empty($input['seating'])
-    ];
-
-    
-    $result = updateShow($shows);
-    
-    if (isset($result['status']) && $result['status'] === 'success') {
-        echo json_encode(['status' => 'success', 'message' => 'Day added successfully', 'dateId' => $newDateId]);
+    [$code, $json] = qrgate_api('/api/dates/add', 'POST', [
+        'date'     => (string)$input['date'],
+        'time'     => (string)$input['time'],
+        'tickets'  => (int)$input['tickets'],
+        'price'    => (float)$input['price'],
+        'location' => (string)($input['location'] ?? ''),
+        'seating'  => !empty($input['seating']),
+    ]);
+    if ($code === 200 && ($json['status'] ?? '') === 'success') {
+        echo json_encode(['status' => 'success', 'dateId' => $json['id']]);
     } else {
-        http_response_code(500);
-        $message = $result['message'] ?? 'Failed to add day';
-        echo json_encode(['status' => 'error', 'message' => $message]);
+        dateApiError($code, $json, 'Termin konnte nicht angelegt werden.');
     }
 }
 
+
+
+
+
 function updateDay() {
     $input = json_decode(file_get_contents('php://input'), true);
-    
-    if (!$input || !isset($input['dateId']) || !isset($input['date']) || !isset($input['time']) || !isset($input['tickets']) || !isset($input['available']) || !isset($input['price'])) {
+    if (!$input || empty($input['dateId'])) {
         http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => 'Missing required fields']);
+        echo json_encode(['status' => 'error', 'message' => 'Missing dateId']);
         return;
     }
-    
-    
-    error_log('updateDay input: ' . print_r($input, true));
-
-    
-    $shows = getShows();
-    if (!$shows) {
-        http_response_code(500);
-        echo json_encode(['status' => 'error', 'message' => 'Could not load shows']);
-        return;
+    $payload = ['id' => (string)$input['dateId']];
+    foreach (['date', 'time', 'location'] as $k) {
+        if (isset($input[$k])) $payload[$k] = (string)$input[$k];
     }
-
-    
-    if (!isset($shows['dates'][$input['dateId']])) {
-        http_response_code(404);
-        echo json_encode(['status' => 'error', 'message' => 'Day not found']);
-        return;
-    }
-
-    $shows['dates'][$input['dateId']] = [
-        'date' => $input['date'],
-        'time' => $input['time'],
-        'tickets' => (int)$input['tickets'],
-        'tickets_available' => (int)$input['available'],
-        'price' => (string)$input['price'],
-        'location' => isset($input['location'])
-            ? (string)$input['location']
-            : (string)($shows['dates'][$input['dateId']]['location'] ?? ''),
-        'seating' => isset($input['seating'])
-            ? (bool)$input['seating']
-            : (bool)($shows['dates'][$input['dateId']]['seating'] ?? false)
-    ];
-
-    
-    $result = updateShow($shows);
-    
-    if (isset($result['status']) && $result['status'] === 'success') {
-        echo json_encode(['status' => 'success', 'message' => 'Day updated successfully']);
+    if (isset($input['tickets'])) $payload['tickets'] = (int)$input['tickets'];
+    if (isset($input['price'])) $payload['price'] = (float)$input['price'];
+    if (isset($input['seating'])) $payload['seating'] = (bool)$input['seating'];
+    [$code, $json] = qrgate_api('/api/dates/update', 'POST', $payload);
+    if ($code === 200 && ($json['status'] ?? '') === 'success') {
+        echo json_encode(['status' => 'success']);
     } else {
-        http_response_code(500);
-        $message = $result['message'] ?? 'Failed to update day';
-        echo json_encode(['status' => 'error', 'message' => $message]);
+        dateApiError($code, $json, 'Termin konnte nicht gespeichert werden.');
     }
 }
 
 function deleteDay() {
     $input = json_decode(file_get_contents('php://input'), true);
-    
-    
-    error_log('deleteDay input: ' . print_r($input, true));
-    
-    if (!$input || !isset($input['dateId'])) {
+    if (!$input || empty($input['dateId'])) {
         http_response_code(400);
         echo json_encode(['status' => 'error', 'message' => 'Missing dateId']);
         return;
     }
-
-    
-    $shows = getShows();
-    if (!$shows) {
-        http_response_code(500);
-        echo json_encode(['status' => 'error', 'message' => 'Could not load shows']);
-        return;
-    }
-
-    
-    if (!isset($shows['dates'][$input['dateId']])) {
-        http_response_code(404);
-        echo json_encode(['status' => 'error', 'message' => 'Day not found']);
-        return;
-    }
-
-    unset($shows['dates'][$input['dateId']]);
-
-    
-    $result = updateShow($shows);
-    
-    
-    error_log('deleteDay result: ' . print_r($result, true));
-    
-    if (isset($result['status']) && $result['status'] === 'success') {
-        echo json_encode(['status' => 'success', 'message' => 'Day deleted successfully']);
+    [$code, $json] = qrgate_api('/api/dates/delete', 'POST', ['id' => (string)$input['dateId']]);
+    if ($code === 200 && ($json['status'] ?? '') === 'success') {
+        echo json_encode(['status' => 'success']);
     } else {
-        http_response_code(500);
-        $message = $result['message'] ?? 'Failed to delete day';
-        error_log('deleteDay error: ' . $message);
-        echo json_encode(['status' => 'error', 'message' => $message]);
+        dateApiError($code, $json, 'Termin konnte nicht gelöscht werden.');
     }
 }
 
@@ -535,7 +450,7 @@ function addLocation() {
         'address' => isset($input['address']) ? (string)$input['address'] : ''
     ];
 
-    $result = updateShow($shows);
+    $result = updateShow(['locations' => $shows['locations']]);
     if (isset($result['status']) && $result['status'] === 'success') {
         echo json_encode(['status' => 'success', 'message' => 'Location added', 'locationId' => $locId]);
     } else {
@@ -570,7 +485,7 @@ function updateLocation() {
         'address' => isset($input['address']) ? (string)$input['address'] : ''
     ];
 
-    $result = updateShow($shows);
+    $result = updateShow(['locations' => $shows['locations']]);
     if (isset($result['status']) && $result['status'] === 'success') {
         echo json_encode(['status' => 'success', 'message' => 'Location updated']);
     } else {
@@ -600,19 +515,25 @@ function deleteLocation() {
         return;
     }
 
+    // A location with seated days is their seat map; it cannot go away.
+    foreach (($shows['dates'] ?? []) as $d) {
+        if (($d['location'] ?? '') === $input['locationId'] && !empty($d['seating'])) {
+            http_response_code(409);
+            echo json_encode(['status' => 'error', 'message' => 'Dieser Ort hat Termine mit Platzwahl. Stelle diese zuerst um oder lösche sie.']);
+            return;
+        }
+    }
     unset($shows['locations'][$input['locationId']]);
 
     // Detach the deleted location from any day still referencing it so tickets
     // don't print a dangling/empty location id.
-    if (isset($shows['dates']) && is_array($shows['dates'])) {
-        foreach ($shows['dates'] as $id => $d) {
-            if (isset($d['location']) && $d['location'] === $input['locationId']) {
-                $shows['dates'][$id]['location'] = '';
-            }
+    foreach (($shows['dates'] ?? []) as $id => $d) {
+        if (($d['location'] ?? '') === $input['locationId']) {
+            qrgate_api('/api/dates/update', 'POST', ['id' => (string)$id, 'location' => '']);
         }
     }
 
-    $result = updateShow($shows);
+    $result = updateShow(['locations' => (object)$shows['locations']]);
     if (isset($result['status']) && $result['status'] === 'success') {
         echo json_encode(['status' => 'success', 'message' => 'Location deleted']);
     } else {
@@ -636,8 +557,7 @@ function saveScreens() {
         return;
     }
 
-    $shows['screens'] = $input['screens'];
-    $result = updateShow($shows);
+    $result = updateShow(['screens' => $input['screens']]);
 
     if (isset($result['status']) && $result['status'] === 'success') {
         echo json_encode(['status' => 'success', 'message' => 'Screens saved successfully']);

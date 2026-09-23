@@ -9,8 +9,9 @@ header('Content-Type: application/json');
 
 // Only allow specific safe endpoints for public access
 $allowedEndpoints = [
+    // NOTE: never expose /api/show/get here; it carries the Stripe secret.
+    // The shop reads the sanitised /api/show/public server-side.
     'payment_methods'  => '/api/show/get/payment_methods',
-    'show'             => '/api/show/get',
     'stripe_pub_key'   => '/api/show/get/stripe_pub_key',
     // Used by the setup wizard: poll install state (e.g. while the backend
     // restarts) and generate a random secret key server-side.

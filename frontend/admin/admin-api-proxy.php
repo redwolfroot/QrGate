@@ -18,7 +18,7 @@ header('Content-Type: application/json');
 $allowedEndpoints = [
     'stats' => '/api/stats',
     'checkins' => '/api/stats/checkins',
-    'show' => '/api/show/get',
+    'overview' => '/api/stats/overview',
     'show_edit' => '/api/show/edit',
     'images' => '/api/image/current',
     'cast_image' => '/api/show/cast/image/',

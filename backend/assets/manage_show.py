@@ -1,6 +1,7 @@
 import quart
 import config.conf as config
 from assets.data import load_show, save_show, location_capacity, seat_occupancy
+from assets.data import add_date, update_date, delete_date, merge_dates
 from assets.boxoffice import normalize_categories
 from reds_simple_logger import Logger
 import os
@@ -52,7 +53,6 @@ def edit_show(app=quart.Quart):
                 else show.get("orga_name")
             )
             title: str = data.get("title") if data.get("title") else show.get("title")
-            dates: dict = data.get("dates") if data.get("dates") else show.get("dates")
             banner: str = (
                 data.get("banner") if data.get("banner") else show.get("banner")
             )
@@ -61,7 +61,6 @@ def edit_show(app=quart.Quart):
             show["banner"] = banner
             show["title"] = title
             show["subtitle"] = data.get("subtitle", show.get("subtitle"))
-            show["dates"] = dates
             show["store_lock"] = bool(data.get("store_lock", show.get("store_lock")))
             show["payment_methods"] = data.get("payment_methods", show.get("payment_methods", "both"))
 
@@ -90,13 +89,80 @@ def edit_show(app=quart.Quart):
             if "app_domain" in data:
                 show["app_domain"] = str(data["app_domain"]).strip()
 
-            save_show(show)
+            # Dates are never written back from the loaded show: that would
+            # reset availability to what it was a moment ago. A client that
+            # still sends a full `dates` dict gets it merged by delta.
+            if isinstance(data.get("dates"), dict) and data["dates"]:
+                merge_dates(data["dates"])
+            save_show(show, write_dates=False)
             return (
                 quart.jsonify({"status": "success", "message": "Show config saved"}),
                 200,
             )
         except Exception as e:
             return quart.jsonify({"status": "error", "message": str(e)}), 500
+
+    def _date_fields(data: dict) -> dict:
+        out = {}
+        if data.get("date"):
+            out["date"] = str(data["date"]).strip()[:10]
+        if data.get("time") is not None:
+            out["time"] = str(data["time"]).strip()[:5]
+        if data.get("tickets") is not None:
+            out["tickets"] = max(0, int(data["tickets"]))
+        if data.get("price") is not None:
+            out["price"] = f"{max(0.0, float(data['price'])):.2f}"
+        if "location" in data:
+            out["location"] = str(data.get("location") or "")[:80]
+        if "seating" in data:
+            out["seating"] = bool(data["seating"])
+        return out
+
+    @app.route("/api/dates/add", methods=["POST"])
+    async def dates_add():
+        """{date, time, tickets, price, location, seating} -> {id}"""
+        if not _authorized():
+            return quart.jsonify({"status": "error", "message": "Unauthorized"}), 401
+        try:
+            f = _date_fields(await quart.request.get_json(silent=True) or {})
+        except (TypeError, ValueError):
+            return quart.jsonify({"status": "error", "message": "invalid_values"}), 400
+        if not f.get("date") or not f.get("time"):
+            return quart.jsonify({"status": "error", "message": "missing_fields"}), 400
+        key = "day_" + uuid.uuid4().hex[:10]
+        if not add_date(key, f["date"], f["time"], f.get("tickets", 0), f.get("price", "0.00"),
+                        f.get("location", ""), f.get("seating", False)):
+            return quart.jsonify({"status": "error", "message": "date_taken"}), 409
+        return quart.jsonify({"status": "success", "id": key}), 200
+
+    @app.route("/api/dates/update", methods=["POST"])
+    async def dates_update():
+        """{id, date?, time?, tickets?, price?, location?, seating?}. A new
+        capacity shifts availability by the difference; tickets already sold
+        or in checkout stay counted."""
+        if not _authorized():
+            return quart.jsonify({"status": "error", "message": "Unauthorized"}), 401
+        data = await quart.request.get_json(silent=True) or {}
+        try:
+            f = _date_fields(data)
+        except (TypeError, ValueError):
+            return quart.jsonify({"status": "error", "message": "invalid_values"}), 400
+        res = update_date(str(data.get("id") or ""), f)
+        if res != "ok":
+            code = 404 if res == "not_found" else 409
+            return quart.jsonify({"status": "error", "message": res}), code
+        return quart.jsonify({"status": "success"}), 200
+
+    @app.route("/api/dates/delete", methods=["POST"])
+    async def dates_delete():
+        """{id}. Refused while tickets or open checkouts reference the date."""
+        if not _authorized():
+            return quart.jsonify({"status": "error", "message": "Unauthorized"}), 401
+        data = await quart.request.get_json(silent=True) or {}
+        res = delete_date(str(data.get("id") or ""))
+        if res != "ok":
+            return quart.jsonify({"status": "error", "message": res}), 404 if res == "not_found" else 409
+        return quart.jsonify({"status": "success"}), 200
 
 
 def _enrich_seated_availability(show: dict) -> None:

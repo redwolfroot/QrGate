@@ -23,6 +23,7 @@ from assets.setup import init_setup, setup_routes, apply_settings_to_config, is_
 from assets.admin_ops import admin_ops
 from assets.seatmap import seatmap_routes
 from assets.boxoffice import boxoffice_routes
+from assets.checkout import checkout_routes
 from config import conf as config
 from assets.timeutil import local_now
 
@@ -63,6 +64,11 @@ _RATE_LIMITS = {
     "/codes/": (60, 60),                 # PDF/QR fetches
     "/api/admin/": (20, 60),             # backup + danger-zone maintenance ops
     "/api/seat/hold": (30, 60),          # checkout seat holds, human-paced
+    # Online checkout, per buyer IP (the PHP frontend forwards it). A real
+    # buyer needs one start and one complete per order.
+    "/api/checkout/start": (12, 300),
+    "/api/checkout/intent": (15, 300),
+    "/api/checkout/complete": (10, 300),
 }
 # Calls older than the largest window can be discarded entirely.
 _RATE_MAX_WINDOW = max((w for _, w in _RATE_LIMITS.values()), default=60)
@@ -144,6 +150,7 @@ setup_routes(app)
 admin_ops(app)
 seatmap_routes(app)
 boxoffice_routes(app)
+checkout_routes(app)
 logger.success("Systems enabled.")
 
 qr_gate = """

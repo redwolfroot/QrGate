@@ -149,6 +149,29 @@ def init_db() -> None:
                 hold_expires TEXT,            -- ISO ts; held rows past this are free
                 PRIMARY KEY (date_key, seat_id)
             );
+
+            -- Online checkout reservations. Capacity is claimed when the buyer
+            -- starts checkout (GA: tickets_available is decremented, seated:
+            -- the seats are held) and either turned into tickets or given back
+            -- when the hold expires. The card is only charged after the
+            -- tickets exist, so nobody pays for a sold-out show.
+            -- state: open -> processing -> done | released | failed
+            CREATE TABLE IF NOT EXISTS checkout_holds (
+                token       TEXT PRIMARY KEY,
+                date        TEXT NOT NULL,
+                seated      INTEGER DEFAULT 0,
+                qty         INTEGER NOT NULL,
+                seats       TEXT DEFAULT '[]',   -- JSON list of seat ids
+                seat_token  TEXT,                -- seat_status hold owner
+                total       REAL NOT NULL,
+                prices      TEXT DEFAULT '[]',   -- JSON per-ticket prices
+                state       TEXT NOT NULL DEFAULT 'open',
+                intent_id   TEXT,
+                client_ip   TEXT,
+                created_at  REAL NOT NULL,
+                expires_at  REAL NOT NULL,
+                result      TEXT                 -- JSON answer once done
+            );
             """
         )
         conn.commit()
@@ -360,10 +383,17 @@ def load_show() -> Dict[str, Any]:
     return show
 
 
-def save_show(data: dict) -> None:
+def save_show(data: dict, write_dates: bool = True) -> None:
     """Decompose the nested show dict back INTO the relational tables (upsert).
     The "1"/"2" date keys are preserved. Any top-level keys we don't have a
-    dedicated column for are stored verbatim in `extras` so nothing is lost."""
+    dedicated column for are stored verbatim in `extras` so nothing is lost.
+
+    write_dates=True replaces the dates table with `data["dates"]`, including
+    tickets_available. Only setup and the JSON import may do that: a show read
+    a moment ago carries availability that concurrent sales have already
+    changed, and writing it back would hand out sold tickets again. Everything
+    else passes False and changes dates through merge_dates / add_date /
+    update_date / delete_date, which adjust availability atomically."""
     if not isinstance(data, dict):
         raise ValueError("save_show expects a dict")
 
@@ -424,7 +454,7 @@ def save_show(data: dict) -> None:
 
         # Rewrite the dates table to exactly match the incoming dict (this
         # mirrors the old whole-file overwrite and supports add/delete by key).
-        dates = data.get("dates")
+        dates = data.get("dates") if write_dates else None
         if isinstance(dates, dict):
             conn.execute("DELETE FROM dates")
             for position, (date_key, value) in enumerate(dates.items()):
@@ -453,6 +483,146 @@ def save_show(data: dict) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+# --------------------------------------------------------------------------- #
+# DATES (admin edits; availability is only ever moved by deltas)
+# --------------------------------------------------------------------------- #
+def add_date(key: str, date: str, time_: str, tickets: int, price, location: str, seating: bool) -> bool:
+    """Insert a new date. False if the calendar date already exists (tickets
+    reference dates by that string, so it must be unique)."""
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        if conn.execute("SELECT 1 FROM dates WHERE date = ? OR date_key = ?", (date, key)).fetchone():
+            conn.rollback()
+            return False
+        pos = conn.execute("SELECT COALESCE(MAX(position), -1) + 1 AS p FROM dates").fetchone()["p"]
+        conn.execute(
+            "INSERT INTO dates (date_key, date, time, tickets, tickets_available, price, "
+            "location, seating, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (key, date, time_, int(tickets), int(tickets), str(price), location or "",
+             1 if seating else 0, pos),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def update_date(key: str, fields: Dict[str, Any]) -> str:
+    """Change one date in place. A new capacity moves tickets_available by the
+    same delta (never below 0), so tickets sold or held meanwhile stay
+    counted. Returns "ok", "not_found", "date_taken", "in_use" (date or
+    seating mode changed although tickets exist) or "below_sold" (capacity
+    smaller than what is already committed)."""
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT * FROM dates WHERE date_key = ?", (key,)).fetchone()
+        if row is None:
+            conn.rollback()
+            return "not_found"
+        new_date = str(fields.get("date") or row["date"])
+        new_seating = bool(fields["seating"]) if "seating" in fields else bool(row["seating"])
+        used = conn.execute(
+            "SELECT COUNT(*) AS n FROM tickets WHERE valid_date = ? "
+            "AND (status IS NULL OR status <> 'cancelled')", (row["date"],)
+        ).fetchone()["n"] + conn.execute(
+            "SELECT COALESCE(SUM(qty), 0) AS n FROM checkout_holds "
+            "WHERE date = ? AND state IN ('open', 'processing')", (row["date"],)
+        ).fetchone()["n"]
+        if new_date != row["date"]:
+            if conn.execute("SELECT 1 FROM dates WHERE date = ? AND date_key <> ?", (new_date, key)).fetchone():
+                conn.rollback()
+                return "date_taken"
+            if used:
+                conn.rollback()
+                return "in_use"
+        if new_seating != bool(row["seating"]) and used:
+            conn.rollback()
+            return "in_use"
+        tickets = int(fields["tickets"]) if "tickets" in fields and fields["tickets"] is not None else int(row["tickets"] or 0)
+        committed = int(row["tickets"] or 0) - int(row["tickets_available"] or 0)
+        if not new_seating and tickets < committed:
+            conn.rollback()
+            return "below_sold"
+        conn.execute(
+            """
+            UPDATE dates SET
+                date = ?, time = ?, price = ?, location = ?, seating = ?,
+                tickets_available = MAX(0, tickets_available + (? - tickets)),
+                tickets = ?
+             WHERE date_key = ?
+            """,
+            (
+                new_date,
+                str(fields.get("time") if fields.get("time") is not None else row["time"]),
+                str(fields.get("price") if fields.get("price") is not None else row["price"]),
+                str(fields.get("location") if "location" in fields else (row["location"] or "")),
+                1 if new_seating else 0,
+                tickets, tickets, key,
+            ),
+        )
+        conn.commit()
+        return "ok"
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def delete_date(key: str) -> str:
+    """Remove a date that nothing references yet: "ok", "not_found", "in_use"."""
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT date FROM dates WHERE date_key = ?", (key,)).fetchone()
+        if row is None:
+            conn.rollback()
+            return "not_found"
+        used = conn.execute(
+            "SELECT COUNT(*) AS n FROM tickets WHERE valid_date = ? "
+            "AND (status IS NULL OR status <> 'cancelled')", (row["date"],)
+        ).fetchone()["n"] + conn.execute(
+            "SELECT COALESCE(SUM(qty), 0) AS n FROM checkout_holds "
+            "WHERE date = ? AND state IN ('open', 'processing')", (row["date"],)
+        ).fetchone()["n"]
+        if used:
+            conn.rollback()
+            return "in_use"
+        conn.execute("DELETE FROM dates WHERE date_key = ?", (key,))
+        conn.commit()
+        return "ok"
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def merge_dates(dates: Dict[str, Any]) -> None:
+    """Apply a `dates` dict from an older client without trusting its
+    tickets_available: known keys go through update_date (delta), new keys
+    are added. Dates missing from the dict are left alone; deleting goes
+    through delete_date only, so a partial payload can never drop a date."""
+    conn = get_db()
+    try:
+        existing = {r["date_key"] for r in conn.execute("SELECT date_key FROM dates").fetchall()}
+    finally:
+        conn.close()
+    for key, v in (dates or {}).items():
+        if not isinstance(v, dict):
+            continue
+        if key in existing:
+            update_date(str(key), {k: v.get(k) for k in ("date", "time", "tickets", "price", "location", "seating") if k in v})
+        else:
+            add_date(str(key), v.get("date"), v.get("time") or "", int(v.get("tickets") or 0),
+                     v.get("price") or "0", v.get("location") or "", bool(v.get("seating")))
 
 
 def load_date(date: str):
@@ -994,7 +1164,10 @@ def boxoffice_sales(day: str, seller: Optional[str] = None) -> list:
     fresh sales and collected reservations alike, optionally only those taken
     by `seller`, oldest first. paid_at is a local ISO timestamp, so a prefix
     match selects the day."""
-    sql = "SELECT * FROM tickets WHERE sale_id IS NOT NULL AND paid_at LIKE ?"
+    # Online-shop orders carry a "web-" sale id; they never went through a
+    # register, so they stay out of the cash report.
+    sql = ("SELECT * FROM tickets WHERE sale_id IS NOT NULL "
+           "AND sale_id NOT LIKE 'web-%' AND paid_at LIKE ?")
     args: list = [f"{day}%"]
     if seller:
         sql += " AND seller = ?"
@@ -1053,6 +1226,390 @@ def log_sale(date: str, count: int, income: float) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+# --------------------------------------------------------------------------- #
+# CHECKOUT HOLDS (online shop: reserve first, charge after the tickets exist)
+# --------------------------------------------------------------------------- #
+def _row_to_hold(row: sqlite3.Row) -> Dict[str, Any]:
+    def _j(v, default):
+        try:
+            return json.loads(v) if v else default
+        except (ValueError, TypeError):
+            return default
+
+    return {
+        "token": row["token"],
+        "date": row["date"],
+        "seated": bool(row["seated"]),
+        "qty": row["qty"],
+        "seats": _j(row["seats"], []),
+        "seat_token": row["seat_token"],
+        "total": row["total"],
+        "prices": _j(row["prices"], []),
+        "state": row["state"],
+        "intent_id": row["intent_id"],
+        "client_ip": row["client_ip"],
+        "created_at": row["created_at"],
+        "expires_at": row["expires_at"],
+        "result": _j(row["result"], None),
+    }
+
+
+def create_checkout_hold(
+    date: str,
+    qty: int,
+    total: float,
+    prices: list,
+    ttl_seconds: int,
+    seats: Optional[list] = None,
+    client_ip: Optional[str] = None,
+):
+    """Claim capacity for an online checkout and record the hold.
+
+    General admission: tickets_available is decremented in the same
+    transaction as the hold row, so the counter everyone sees already excludes
+    tickets that are in someone's checkout. Seated: the seats are held in
+    seat_status under their own token. Returns (ok, hold, taken) where `taken`
+    lists seats someone else holds or bought (seated only)."""
+    token = secrets.token_hex(20)
+    now = time.time()
+    expires = now + max(60, int(ttl_seconds))
+    seats = [str(s) for s in (seats or [])]
+    seated = bool(seats)
+    seat_token = secrets.token_hex(16) if seated else None
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        if seated:
+            _sweep_expired_holds(conn, date)
+            placeholders = ",".join("?" * len(seats))
+            taken = [
+                r["seat_id"]
+                for r in conn.execute(
+                    f"SELECT seat_id FROM seat_status WHERE date_key = ? "
+                    f"AND seat_id IN ({placeholders})",
+                    (date, *seats),
+                ).fetchall()
+            ]
+            if taken:
+                conn.rollback()
+                return False, None, taken
+            for sid in seats:
+                conn.execute(
+                    "INSERT INTO seat_status (date_key, seat_id, status, hold_token, "
+                    "hold_expires) VALUES (?, ?, 'held', ?, ?)",
+                    (date, sid, seat_token, str(expires)),
+                )
+        else:
+            cur = conn.execute(
+                "UPDATE dates SET tickets_available = tickets_available - ? "
+                "WHERE date = ? AND tickets_available >= ?",
+                (qty, date, qty),
+            )
+            if cur.rowcount < 1:
+                conn.rollback()
+                return False, None, []
+        conn.execute(
+            """
+            INSERT INTO checkout_holds (token, date, seated, qty, seats, seat_token,
+                total, prices, state, client_ip, created_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)
+            """,
+            (
+                token, date, 1 if seated else 0, int(qty), json.dumps(seats),
+                seat_token, float(total), json.dumps(prices), client_ip, now, expires,
+            ),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return True, get_checkout_hold(token), []
+
+
+def get_checkout_hold(token: str) -> Optional[Dict[str, Any]]:
+    if not token:
+        return None
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM checkout_holds WHERE token = ?", (str(token),)
+        ).fetchone()
+    finally:
+        conn.close()
+    return _row_to_hold(row) if row is not None else None
+
+
+def set_checkout_hold_intent(token: str, intent_id: str, extend_to: float) -> None:
+    """Remember the PaymentIntent of a hold and push its expiry out so a buyer
+    who is in the middle of a 3-D Secure challenge does not lose the tickets.
+    The seat holds are extended with it."""
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT seat_token, date, expires_at FROM checkout_holds "
+            "WHERE token = ? AND state = 'open'",
+            (token,),
+        ).fetchone()
+        if row is not None:
+            expires = max(float(row["expires_at"]), float(extend_to))
+            conn.execute(
+                "UPDATE checkout_holds SET intent_id = ?, expires_at = ? WHERE token = ?",
+                (intent_id, expires, token),
+            )
+            if row["seat_token"]:
+                conn.execute(
+                    "UPDATE seat_status SET hold_expires = ? WHERE date_key = ? "
+                    "AND hold_token = ? AND status = 'held'",
+                    (str(expires), row["date"], row["seat_token"]),
+                )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def claim_checkout_hold(token: str) -> bool:
+    """open -> processing. Exactly one caller wins; the sweeper never touches a
+    hold that is being processed, so its capacity cannot be given away while
+    the order is being written."""
+    conn = get_db()
+    try:
+        cur = conn.execute(
+            "UPDATE checkout_holds SET state = 'processing' WHERE token = ? AND state = 'open'",
+            (token,),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def unclaim_checkout_hold(token: str) -> None:
+    """processing -> open, e.g. when the payment was not authorised yet."""
+    conn = get_db()
+    try:
+        conn.execute(
+            "UPDATE checkout_holds SET state = 'open' WHERE token = ? AND state = 'processing'",
+            (token,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def finish_checkout_hold(token: str, state: str, result: Optional[dict] = None) -> None:
+    conn = get_db()
+    try:
+        conn.execute(
+            "UPDATE checkout_holds SET state = ?, result = ? WHERE token = ?",
+            (state, json.dumps(result) if result is not None else None, token),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _give_back_hold(conn: sqlite3.Connection, row: sqlite3.Row) -> None:
+    """Return a hold's capacity. Caller owns the transaction."""
+    if row["seated"]:
+        conn.execute(
+            "DELETE FROM seat_status WHERE date_key = ? AND hold_token = ? AND status = 'held'",
+            (row["date"], row["seat_token"]),
+        )
+    else:
+        conn.execute(
+            "UPDATE dates SET tickets_available = tickets_available + ? WHERE date = ?",
+            (row["qty"], row["date"]),
+        )
+
+
+def release_checkout_hold(token: str, states=("open",)) -> Optional[Dict[str, Any]]:
+    """Give a hold's capacity back (buyer left, or the order failed). Only acts
+    on holds in one of `states`, so a finished order is never undone. Returns
+    the released hold or None."""
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        placeholders = ",".join("?" * len(states))
+        row = conn.execute(
+            f"SELECT * FROM checkout_holds WHERE token = ? AND state IN ({placeholders})",
+            (token, *states),
+        ).fetchone()
+        if row is None:
+            conn.rollback()
+            return None
+        _give_back_hold(conn, row)
+        conn.execute(
+            "UPDATE checkout_holds SET state = 'released' WHERE token = ?", (token,)
+        )
+        conn.commit()
+        return _row_to_hold(row)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def sweep_checkout_holds(now: Optional[float] = None) -> list:
+    """Release every open hold past its expiry. Returns the released holds so
+    the caller can cancel their (never captured) PaymentIntents. Old finished
+    rows are pruned after a day."""
+    now = time.time() if now is None else now
+    conn = get_db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        rows = conn.execute(
+            "SELECT * FROM checkout_holds WHERE state = 'open' AND expires_at < ?",
+            (now,),
+        ).fetchall()
+        for row in rows:
+            _give_back_hold(conn, row)
+            conn.execute(
+                "UPDATE checkout_holds SET state = 'released' WHERE token = ?",
+                (row["token"],),
+            )
+        conn.execute(
+            "DELETE FROM checkout_holds WHERE state IN ('released', 'failed') "
+            "AND expires_at < ?",
+            (now - 86400,),
+        )
+        conn.commit()
+        return [_row_to_hold(r) for r in rows]
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def delete_tickets(tids: list) -> None:
+    """Remove freshly written tickets again (order rolled back before the
+    buyer was charged). Their seats are freed with them."""
+    tids = [str(t) for t in tids if t]
+    if not tids:
+        return
+    placeholders = ",".join("?" * len(tids))
+    conn = get_db()
+    try:
+        with conn:
+            conn.execute(f"DELETE FROM seat_status WHERE tid IN ({placeholders})", tids)
+            conn.execute(f"DELETE FROM tickets WHERE tid IN ({placeholders})", tids)
+    finally:
+        conn.close()
+
+
+def unpaid_ticket_count(email: str) -> int:
+    """Active, unpaid (pay-at-the-door) tickets reserved under an email."""
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM tickets WHERE email = ? COLLATE NOCASE "
+            "AND paid = 0 AND (status IS NULL OR status <> 'cancelled') "
+            "AND (type IS NULL OR type = 'visitor')",
+            (email,),
+        ).fetchone()
+    finally:
+        conn.close()
+    return int(row["n"] or 0)
+
+
+# --------------------------------------------------------------------------- #
+# ADMIN DASHBOARD
+# --------------------------------------------------------------------------- #
+def dashboard_overview() -> Dict[str, Any]:
+    """Per-date sales truth from the tickets table (not the availability
+    counter, which also excludes tickets sitting in open checkouts)."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """
+            SELECT valid_date AS d,
+                   COUNT(*) AS sold,
+                   SUM(CASE WHEN paid = 1 THEN 1 ELSE 0 END) AS paid,
+                   SUM(CASE WHEN paid = 0 THEN 1 ELSE 0 END) AS unpaid,
+                   SUM(CASE WHEN used_at IS NOT NULL AND used_at <> '' THEN 1 ELSE 0 END) AS checked_in,
+                   SUM(CASE WHEN paid = 1 THEN COALESCE(price, 0) ELSE 0 END) AS revenue,
+                   SUM(CASE WHEN paid = 0 THEN COALESCE(price, 0) ELSE 0 END) AS outstanding,
+                   SUM(CASE WHEN sale_id LIKE 'web-%' OR method = 'stripe' THEN 1 ELSE 0 END) AS online,
+                   SUM(CASE WHEN sale_id IS NOT NULL AND sale_id NOT LIKE 'web-%' THEN 1 ELSE 0 END) AS boxoffice
+              FROM tickets
+             WHERE (status IS NULL OR status <> 'cancelled')
+               AND (type IS NULL OR type = 'visitor')
+             GROUP BY valid_date
+            """
+        ).fetchall()
+        holds = conn.execute(
+            "SELECT date, SUM(qty) AS n FROM checkout_holds "
+            "WHERE state IN ('open', 'processing') GROUP BY date"
+        ).fetchall()
+        cancelled = conn.execute(
+            "SELECT COUNT(*) AS n FROM tickets WHERE status = 'cancelled'"
+        ).fetchone()
+    finally:
+        conn.close()
+    by_date: Dict[str, Any] = {}
+    for r in rows:
+        by_date[r["d"]] = {
+            "sold": r["sold"] or 0,
+            "paid": r["paid"] or 0,
+            "unpaid": r["unpaid"] or 0,
+            "checked_in": r["checked_in"] or 0,
+            "revenue": round(r["revenue"] or 0, 2),
+            "outstanding": round(r["outstanding"] or 0, 2),
+            "online": r["online"] or 0,
+            "boxoffice": r["boxoffice"] or 0,
+        }
+    return {
+        "by_date": by_date,
+        "in_checkout": {h["date"]: h["n"] or 0 for h in holds},
+        "cancelled": int(cancelled["n"] or 0),
+    }
+
+
+def recent_orders(limit: int = 12) -> list:
+    """Newest visitor tickets, one row per order: grouped by sale id, or for
+    older rows without one by buyer email and creation second."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """
+            SELECT MIN(tid) AS tid, first_name, last_name, email, valid_date,
+                   method, paid, created_at, COUNT(*) AS n,
+                   SUM(COALESCE(price, 0)) AS total,
+                   MAX(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled
+              FROM tickets
+             WHERE created_at IS NOT NULL AND (type IS NULL OR type = 'visitor')
+             GROUP BY COALESCE(sale_id, email || '|' || created_at)
+             ORDER BY created_at DESC
+             LIMIT ?
+            """,
+            (int(limit),),
+        ).fetchall()
+    finally:
+        conn.close()
+    return [
+        {
+            "tid": r["tid"],
+            "name": ((r["first_name"] or "") + " " + (r["last_name"] or "")).strip(),
+            "email": r["email"],
+            "valid_date": r["valid_date"],
+            "method": r["method"],
+            "paid": bool(r["paid"]),
+            "created_at": r["created_at"],
+            "count": r["n"],
+            "total": round(r["total"] or 0, 2),
+            "cancelled": bool(r["cancelled"]),
+        }
+        for r in rows
+    ]
 
 
 # Initialize the database (and run the one-time JSON migration) on import.

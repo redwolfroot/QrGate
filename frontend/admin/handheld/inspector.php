@@ -71,7 +71,7 @@ $extraHead = <<<'HTML'
 HTML;
 ?>
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" class="avo-ui">
 
 <?php include __DIR__ . '/../../partials/head.php'; ?>
 

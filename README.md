@@ -354,7 +354,14 @@ All `/api/*` routes require the `Authorization: {auth_key}` header, except the p
 
 | Route                                                     | Method   | Purpose                                                                                                   |
 |-----------------------------------------------------------|----------|-----------------------------------------------------------------------------------------------------------|
-| `/api/ticket/create`                                      | POST     | Create a ticket (public buyer flow)                                                                       |
+| `/api/ticket/create`                                      | POST     | Create a ticket directly (legacy; the shop uses `/api/checkout/*`)                                        |
+| `/api/checkout/start`                                     | POST     | Shop: reserve tickets or seats for 10 min before any payment; refuses when sold out                       |
+| `/api/checkout/intent`                                    | POST     | Shop: Stripe PaymentIntent with manual capture for a reservation (card is only authorised)               |
+| `/api/checkout/complete`                                  | POST     | Shop: write the tickets, then capture the payment; rolls back and cancels on any failure                  |
+| `/api/checkout/release` \| `/api/checkout/status`         | POST     | Shop: give a reservation back early / read its state                                                      |
+| `/api/show/public`                                        | GET      | Show data safe for the public shop (no payment secrets)                                                   |
+| `/api/dates/add` \| `update` \| `delete`                   | POST     | Admin: change one date atomically; capacity changes shift availability by the difference                 |
+| `/api/stats/overview`                                     | GET      | Admin dashboard: per-date sales, revenue, open reservations, check-ins, latest orders                     |
 | `/api/boxoffice/sell`                                     | POST     | Box-office sale: cart of price categories, cash/card, atomic                                              |
 | `/api/boxoffice/sales`                                    | POST     | Tickets paid at the box office on a day (per register)                                                    |
 | `/api/boxoffice/search`                                   | POST     | Find tickets by ID, name or email                                                                         |
@@ -367,7 +374,7 @@ All `/api/*` routes require the `Authorization: {auth_key}` header, except the p
 | `/api/ticket/validate`                                    | GET/POST | Validate/scan a ticket at the door                                                                        |
 | `/api/stats/checkins`                                     | GET      | Live per-date check-in counts + latest scans (admin dashboard)                                            |
 | `/codes/pdf?tid=X&token=Y`                                | GET      | Download ticket PDF (gated by per-ticket HMAC token, not the auth key; `?tids=&tokens=` for batches)      |
-| `/api/show/get`                                           | GET/POST | Full event config                                                                                         |
+| `/api/show/get`                                           | GET/POST | Full event config, including secrets (server-side use only)                                               |
 | `/api/show/edit`                                          | POST     | Update event config                                                                                       |
 | `/api/seatmap/get`                                        | GET      | Get a location's seat map layout                                                                          |
 | `/api/seatmap/save`                                       | POST     | Save a location's seat map layout                                                                         |

@@ -42,7 +42,7 @@ $pageTitle = 'Change Password';
 $assetBase = '../';
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="avo-ui">
 <?php include __DIR__ . '/../partials/head.php'; ?>
 <body class="min-h-screen flex flex-col">
     <div class="avo-topbar" aria-hidden="true"></div>
@@ -58,7 +58,7 @@ $assetBase = '../';
                         <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                     </svg>
                 </div>
-                <div class="avo-kicker mb-1">// security</div>
+                <div class="avo-kicker mb-1">security</div>
                 <h1 class="text-2xl">Change <span class="avo-hl">Password</span></h1>
                 <p class="avo-muted mt-1 text-sm">
                     <?php echo $forced

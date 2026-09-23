@@ -1,0 +1,1326 @@
+/* ==========================================================================
+   avocloud · brand kit  v4.2
+   chromatic terminal — black canvas · one coral spark · glass surfaces
+
+   Source of truth is tokens/tokens.json. Edit there, mirror here.
+   Rationale: ../BRANDING.md   History: ../CHANGELOG.md   Drift: ../CONFORMANCE.md
+
+   LAYOUT OF THIS FILE
+     1  Fonts             → avocloud.tokens.css
+     2  Tokens            → avocloud.tokens.css  (:root dark · .avo-light)
+     3  Base              opt-in reset, type roles
+     4  Primitives        glass surface · corner marks · grid · hatch
+     5  Marketing         kicker · serial · btn · chip · tag · link · card · stat
+     6  Layout            container · section · grid · stack · cluster · rule
+     7  Product UI        table · fields · rail · tabs · dialog · toast · …
+     8  Focus & motion    the two contracts every property ships
+
+   HOW TO USE IT
+     @import "avocloud.css";          → tokens + components, dark
+     @import "avocloud.tokens.css";   → the VALUES only, for a property that
+                                        already has its own component CSS
+     <html class="avo-light">          → light-first property (a tool may be)
+     <section class="avo-band">        → the marketing light cut band
+
+   Everything is prefixed `--avo-` / `.avo-` so it can drop into a project that
+   already has its own names. Nothing here styles a bare element except under
+   `.avo-reset` — importing this file cannot break an existing page.
+   ========================================================================== */
+
+/* The token layer lives in its own file so a consumer can take the values
+   without the components. Same definitions, one source. */
+@import "./avocloud.tokens.css";
+
+/* ---- The marketing cut band ---------------------------------------------
+   ONE high-contrast section inside a dark page — not a theme. It carries the
+   inverted grain so the canvas continues through it instead of stopping dead
+   at its edge. Give its content a positioned wrapper so it paints above. */
+.avo-band {
+  position: relative;
+  --avo-canvas:         #E8ECEF;
+  --avo-surface:        #FFFFFF;
+  --avo-surface-raised: #ECEFF1;
+  --avo-surface-high:   #E4E8EA;
+  --avo-line:           rgba(0,0,0,0.14);
+  --avo-line-strong:    rgba(0,0,0,0.22);
+  --avo-text:           #0A0A0A;
+  --avo-text-muted:     #555555;
+  --avo-text-muted-2:   #555555;
+  background: var(--avo-canvas);
+  color: var(--avo-text);
+}
+
+/* ---- ONE KIT-WIDE RULE ABOUT TRANSITIONS --------------------------------
+   Nothing in this file transitions a COLOUR property — not `color`, not
+   `background-color`, not `border-color`, not `box-shadow`. Only geometry
+   (transform, width, height) and opacity are tweened.
+
+   Two reasons, and they point the same way.
+
+   1. It is what the design language already says. §5: hover is a hard state
+      change, `0.1s`, no fades. A 0.1s colour tween is imperceptible anyway.
+
+   2. It is the only way theme switching works. Measured in Chromium: a
+      transition on a colour property WEDGES that property whenever its value
+      arrives through a custom property that changed on an ANCESTOR. Add
+      `.avo-light` at runtime and every element already on the page keeps its
+      old colour indefinitely, while an element created after the switch gets
+      the new one — which looks like a scoping bug and is not one. Verified on
+      the plate outline: with a transition it stayed rgba(255,255,255,0.38)
+      under `.avo-light`; with `transition: none` forced, it resolved to
+      rgba(0,0,0,0.22) immediately.
+
+   So: tween the corner mark's scale, not its colour. Tween the switch knob's
+   position, not its fill. If you add a component, keep to this. */
+
+/* ==========================================================================
+   3 · Base
+   The old kit styled bare `h1, h2` at import time, which silently restyled any
+   page that merely wanted the tokens. Base styling is opt-in now: put
+   `.avo-reset` on <html> or <body> to take it, or use the type classes below
+   anywhere without it.
+   ========================================================================== */
+/* THE RESET CARRIES NO SPECIFICITY. Every selector below is wrapped in
+   `:where()`, which contributes zero — so the whole block sits at the
+   specificity of `.avo-reset` alone and loses to any component class, and to
+   any rule a host page already had.
+
+   This was learned four times over, each time the same shape: a general rule
+   outranking the specific thing it was meant to support.
+     · `.avo-reset a` (0,1,1) beat `.avo-link` (0,1,0)   → brand links lost their colour
+     · `.avo-reset button` beat `.avo-btn`               → primary buttons rendered transparent
+     · `.avo-reset h1 { font: inherit }`                 → reset font-variation-settings, so
+                                                           variable Archivo fell back to 400
+     · `.avo-reset a:not([class*=avo-])` (0,2,1) beat
+       `.avo-rail a` (0,1,1)                             → rail and tab links inherited body colour
+   Note the `:not()` sits INSIDE the `:where()`, which is load-bearing:
+   `:not()` takes the specificity of its own argument, so
+   `:where(a):not([class*="avo-"])` is still (0,2,0) — and that beat
+   `.avo-rail a` at (0,1,1), which is exactly the fourth bug above. Written as
+   `:where(a:not([class*="avo-"]))` the whole compound is zero and only
+   `.avo-reset` counts. */
+.avo-reset :where(*, *::before, *::after) { box-sizing: border-box; }
+
+/* Margins are zeroed on the elements that actually ship one. Padding is left
+   ALONE except on lists.
+
+   `:where(*) { padding: 0 }` was here and it is a wrecking ball. Unlayered
+   rules beat layered ones regardless of specificity, so on a page that also
+   loads a base layer (Basecoat ships inside `@layer components`) it silently
+   stripped the padding off every component the base defines — cards went flush
+   to their border, buttons went cramped. Found by looking at the dashboard
+   demo, not by reading the CSS. */
+.avo-reset :where(body, h1, h2, h3, h4, h5, h6, p, figure, blockquote, dl, dd,
+                  ul, ol, fieldset, legend, hr) { margin: 0; }
+.avo-reset :where(ul, ol) { padding: 0; }
+.avo-reset { -webkit-text-size-adjust: 100%; }
+.avo-reset :where(body) {
+  background: var(--avo-canvas);
+  color: var(--avo-text);
+  font-family: var(--avo-font-body);
+  font-size: var(--avo-text-body);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+.avo-reset :where(img, svg, video) { display: block; max-width: 100%; }
+.avo-reset :where(ul, ol) { list-style: none; }
+.avo-reset :where(a:not([class*="avo-"])) { color: inherit; text-decoration: none; }
+.avo-reset :where(button:not([class*="avo-"])) {
+  font: inherit; color: inherit; background: none; border: none; cursor: pointer;
+}
+
+/* HEADINGS ARE DELIBERATELY NOT NORMALISED.
+
+   `font: inherit` reset every longhand of the shorthand, including
+   font-variation-settings → `normal`, which renders variable Archivo at width
+   100 / weight 400: the exact "the font didn't load" failure the axes exist to
+   prevent. Narrowing it to `font-size: inherit` still flattened every heading
+   class a HOST page had of its own.
+
+   Preflight-style heading flattening only works when you own every heading in
+   the document. This kit drops into projects that already exist, so bare
+   headings keep their UA size and the brand scale is opt-in through
+   `.avo-display-1` / `.avo-display-2` / `.avo-title`. Importing this file must
+   not change a page that did not ask for it. */
+
+/* ---- Type roles ---------------------------------------------------------
+   Syne carries the wordmark AND the section headlines, and since 2026-09-16
+   the stat counters too. Space Grotesk carries body copy and card headings.
+   Mono is the label voice. Three faces, no fourth. */
+.avo-wordmark {
+  font-family: var(--avo-font-wordmark);
+  font-weight: 800;
+  font-size: var(--avo-text-wordmark);
+  line-height: 0.95;
+  letter-spacing: -0.015em;
+  text-transform: uppercase;
+}
+.avo-display-1, .avo-display-2 {
+  font-family: var(--avo-font-brand);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+.avo-display-1 { font-size: var(--avo-text-display-1); }
+.avo-display-2 { font-size: var(--avo-text-display-2); }
+/* The counter role. Anton held it until 2026-09-16 — one font request for one
+   element on one page. */
+.avo-stat {
+  font-family: var(--avo-font-massive);
+  font-weight: 700;            /* Anton shipped one weight; Syne must be told */
+  font-size: var(--avo-text-stat);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Card headings are the article voice, not a label: Space Grotesk 600. The
+   mono-uppercase card title was a v3 idea that never shipped. */
+.avo-title {
+  font-family: var(--avo-font-body);
+  font-weight: 600;
+  font-size: var(--avo-text-md, 1.2rem);
+  line-height: 1.2;
+}
+/* The mono label voice, for kickers, table headers and nav. */
+.avo-label-mono {
+  font-family: var(--avo-font-mono);
+  font-weight: 500;
+  font-size: var(--avo-text-title);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.avo-lead  { font-size: var(--avo-text-lead); line-height: 1.6; color: var(--avo-text-muted-2); max-width: var(--avo-measure); }
+.avo-body  { font-size: var(--avo-text-body); line-height: 1.55; max-width: var(--avo-measure); }
+.avo-small { font-size: var(--avo-text-small); line-height: 1.5; color: var(--avo-text-muted); }
+.avo-mono  { font-family: var(--avo-font-mono); }
+.avo-num   { font-family: var(--avo-font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+
+/* No kinetic type here: no shipping face is loaded variable (§6.6). There is
+   nothing to pin under reduced motion. */
+
+/* ==========================================================================
+   4 · Primitives
+   ========================================================================== */
+
+/* ---- Glass · THE surface treatment --------------------------------------
+   One definition, applied to every surface that should read as glass. The
+   gradient runs top-light to bottom-dark so a pane looks lit from above, and
+   the inset box-shadow is a 1px top edge — the hairline motif catching light
+   rather than a border.
+
+   `backdrop-filter` is expensive, so this is deliberately NOT on everything:
+   it goes on surfaces that hold content, never on every small chip.
+
+   Without backdrop-filter support the tint alone reads as a flat translucent
+   pane, which is a correct-looking fallback rather than a broken one — so this
+   needs no @supports branch.
+
+   NO OPAQUE BACKGROUND. The gradient IS the surface; anything solid behind it
+   blocks exactly what is supposed to show through. */
+.avo-plate, .avo-btn, .avo-card, .avo-glass {
+  position: relative;
+  border: 1px solid var(--avo-line);
+  border-radius: var(--avo-radius-lg);
+  background-color: transparent;
+  background-image: linear-gradient(to bottom, var(--avo-glass-tint), var(--avo-glass-tint-2));
+  -webkit-backdrop-filter: blur(var(--avo-glass-blur)) saturate(1.15);
+          backdrop-filter: blur(var(--avo-glass-blur)) saturate(1.15);
+  box-shadow: inset 0 1px 0 var(--avo-glass-edge);
+  /* No transition. Hover here is a hard state change (§5), and both properties
+     this rule used to tween — border-color and box-shadow — are colour
+     properties under the kit-wide rule above. They were the original symptom:
+     the plate outline stayed rgba(255,255,255,0.38) after a runtime theme
+     swap. */
+}
+/* controls take the tighter corner */
+.avo-btn, .avo-tooltip { border-radius: var(--avo-radius); }
+
+/* ---- Floating surfaces are OPAQUE, not glass ----------------------------
+   A dialog, a menu, a toast and a tooltip sit ABOVE the page, not on the
+   canvas. Glass needs texture behind it to read as glass (§5) — behind a
+   modal there is a 72% black scrim, and blurring a scrim gives mud. They get
+   the raised surface colour, a hairline and the same 1px top edge.
+
+   `margin: auto` is not decoration. A modal `<dialog>` is centred by the UA
+   stylesheet with `margin: auto`, and ANY author `margin` beats it — Tailwind
+   preflight ships `*, ::backdrop { margin: 0 }`, which pins the modal to the
+   top-left corner. Re-stating it here is what keeps the dialog centred on a
+   page that also loads a base layer. */
+.avo-dialog, .avo-toast, .avo-menu, .avo-tooltip {
+  position: relative;
+  background-color: var(--avo-surface-raised);
+  background-image: none;
+  -webkit-backdrop-filter: none;
+          backdrop-filter: none;
+  border: 1px solid var(--avo-line-strong);
+  border-radius: var(--avo-radius-lg);
+  box-shadow: inset 0 1px 0 var(--avo-glass-edge);
+}
+.avo-tooltip { border-radius: var(--avo-radius); }
+
+/* Raised: the edge brightens and the outline firms up. */
+.avo-plate:hover, .avo-card:hover, .avo-card:focus-within {
+  border-color: var(--avo-line-strong);
+  box-shadow: inset 0 1px 0 var(--avo-glass-edge-raised);
+}
+
+/* A continuously animated surface runs denser and softer: backdrop-filter cost
+   scales with radius x area, and a moving element re-rasterises its backdrop
+   every frame. Less to sample, and the copy stays readable while it moves. */
+.avo-plate.dense {
+  --avo-glass-blur:   5px;
+  --avo-glass-tint:   rgba(4,4,4,0.42);
+  --avo-glass-tint-2: rgba(4,4,4,0.58);
+}
+
+/* mix-blend-mode on ANY layer behind a glass surface silently disables it: a
+   blended element establishes its own backdrop root, and backdrop-filter on a
+   sibling cannot sample inside one. There is no warning anywhere. */
+
+/* The coral block — the one sanctioned coral fill. Solid, not glass: glass
+   over it would mute the one loud colour on the page. ONE PER VIEW. */
+.avo-plate.interrupt {
+  background-image: none;
+  -webkit-backdrop-filter: none;
+          backdrop-filter: none;
+  background-color: var(--avo-primary);
+  border-color: var(--avo-primary);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.22);
+  color: var(--avo-primary-on);
+}
+.avo-plate.interrupt .avo-kicker,
+.avo-plate.interrupt .avo-link { color: rgba(0,0,0,0.72); }
+.avo-plate.interrupt .avo-kicker::before,
+.avo-plate.interrupt .avo-title { color: #000; }
+.avo-plate.interrupt .avo-mk { border-color: rgba(0,0,0,0.4) !important; }
+/* Pin the hover, or the card's normal :hover re-tints it and the block blinks
+   back to a dark card under the pointer. */
+.avo-plate.interrupt:hover { border-color: var(--avo-primary); }
+
+/* ---- Corner marks -------------------------------------------------------
+   Two coral arcs in the TOP-LEFT and BOTTOM-RIGHT corners. They trace the
+   corner they sit in, so they carry a 4px radius — a square mark inside a
+   rounded corner reads as a rendering error.
+
+   Visible at rest, not a hover reward: they are structure. Hover and
+   focus-within bring them to full. */
+.avo-mk {
+  position: absolute;
+  width: var(--avo-mk-size);
+  height: var(--avo-mk-size);
+  z-index: 2;
+  pointer-events: none;
+  opacity: var(--avo-mk-rest-opacity);
+  transform: scale(var(--avo-mk-rest-scale));
+  transition: opacity var(--avo-dur-micro) var(--avo-ease-out),
+              transform var(--avo-dur-ui) var(--avo-ease-spring);
+}
+.avo-mk.tl {
+  top: var(--avo-mk-inset); left: var(--avo-mk-inset);
+  border-top: 1px solid var(--avo-primary);
+  border-left: 1px solid var(--avo-primary);
+  border-top-left-radius: var(--avo-radius-mk);
+  transform-origin: top left;
+}
+.avo-mk.br {
+  bottom: var(--avo-mk-inset); right: var(--avo-mk-inset);
+  border-bottom: 1px solid var(--avo-primary);
+  border-right: 1px solid var(--avo-primary);
+  border-bottom-right-radius: var(--avo-radius-mk);
+  transform-origin: bottom right;
+}
+.avo-card:hover > .avo-mk,
+.avo-card:focus-within > .avo-mk,
+.avo-plate:hover > .avo-mk { opacity: 1; transform: scale(1); }
+
+/* ---- The canvas grid ----------------------------------------------------
+   Two fixed layers: a 40px line grid and a sparser 200px crosshair field.
+   They drift at different rates, which is the parallax depth.
+
+   DRIFT WITH A TRANSFORM, never background-position. These are fixed,
+   full-viewport and masked; animating background-position repaints the whole
+   viewport — mask included — on every scroll frame, twice over, which is what
+   makes scrolling drag. A transform is composited and costs no repaint. Wrap
+   the value modulo the tile size in JS and the repeating background is
+   visually identical. */
+.avo-gridlines, .avo-crosshairs {
+  position: fixed;
+  inset: 0;
+  z-index: var(--avo-z-canvas);
+  pointer-events: none;
+  will-change: transform;
+}
+.avo-gridlines {
+  background-image:
+    linear-gradient(var(--avo-line-faint, rgba(255,255,255,0.05)) 1px, transparent 1px),
+    linear-gradient(90deg, var(--avo-line-faint, rgba(255,255,255,0.05)) 1px, transparent 1px);
+  background-size: var(--avo-grid-fine) var(--avo-grid-fine);
+  transform: translate3d(0, var(--avo-grid-shift-fine, 0px), 0);
+  -webkit-mask-image: radial-gradient(ellipse 100vw 80vh at 50vw 40vh, #000 55%, transparent 100%);
+          mask-image: radial-gradient(ellipse 100vw 80vh at 50vw 40vh, #000 55%, transparent 100%);
+}
+.avo-crosshairs {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cpath d='M100 93v14M93 100h14' stroke='rgba(255,255,255,0.16)' stroke-width='1'/%3E%3C/svg%3E");
+  background-size: var(--avo-grid-cross) var(--avo-grid-cross);
+  transform: translate3d(0, var(--avo-grid-shift-cross, 0px), 0);
+  -webkit-mask-image: radial-gradient(ellipse 90vw 70vh at 50vw 40vh, #000 45%, transparent 100%);
+          mask-image: radial-gradient(ellipse 90vw 70vh at 50vw 40vh, #000 45%, transparent 100%);
+}
+
+/* ---- Hatch · the 45° technical fill -------------------------------------
+   A band, or a strip down a surface's left edge. Never a surface fill — the
+   same rule as coral itself.
+   NOTE: offered by the kit; not currently used on avocloud.net. */
+.avo-hatch { height: 6px; background: var(--avo-hatch); opacity: 0.8; }
+.avo-hatched { position: relative; }
+.avo-hatched::after {
+  content: "";
+  position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  background: var(--avo-hatch);
+  z-index: 1; pointer-events: none;
+}
+
+/* ---- Icons --------------------------------------------------------------
+   Lucide, and only Lucide. Mixing sets is visible immediately: the corner
+   radii, the optical weight and the grid never agree between two libraries.
+
+   THE STROKE MUST NOT SCALE WITH THE ICON. A Lucide glyph is drawn on a
+   24-unit grid, so `stroke-width: 1.5` rendered at 16px comes out at
+   1.5 × 16/24 = 1px, and at 40px it comes out at 2.5px. Same setting, three
+   different weights on one screen. `vector-effect: non-scaling-stroke` pins
+   the stroke to device pixels — it is the CSS equivalent of Lucide's own
+   `absoluteStrokeWidth` prop, and it works on plain inline SVG with no
+   framework. Verified by rendering the same icon at 16/20/24/40px.
+
+   Colour is always inherited. An icon does not choose its own colour; it
+   belongs to the text or the control it sits in. */
+.avo-icon,
+.avo-btn svg, .avo-chip svg, .avo-rail svg, .avo-menu svg,
+.avo-title svg, .avo-empty svg, .avo-toolbar svg, .avo-tabs svg {
+  width: var(--avo-icon-sm);
+  height: var(--avo-icon-sm);
+  flex-shrink: 0;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: var(--avo-icon-stroke);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;      /* the control owns the click, not the glyph */
+}
+.avo-icon *,
+.avo-btn svg *, .avo-chip svg *, .avo-rail svg *, .avo-menu svg *,
+.avo-title svg *, .avo-empty svg *, .avo-toolbar svg *, .avo-tabs svg * {
+  vector-effect: non-scaling-stroke;
+}
+/* A safety net for product UI. An inline SVG with no width renders at its
+   natural size — 24px from the viewBox, or larger — and in a dense screen that
+   is always a bug, never a choice. Scoped to `.avo-ui` so a marketing page can
+   still drop in a full-size illustration. An icon that WANTS to be big says so
+   with `.avo-icon.lg` or its own width. */
+.avo-ui svg:not([width]):not([class]) {
+  width: var(--avo-icon-sm);
+  height: var(--avo-icon-sm);
+  flex-shrink: 0;
+}
+.avo-icon.md { width: var(--avo-icon-md); height: var(--avo-icon-md); }
+.avo-icon.lg { width: var(--avo-icon-lg); height: var(--avo-icon-lg); }
+/* In a button the icon tracks the label rather than a fixed step, so it stays
+   proportional across the control scale. */
+.avo-btn svg { width: 1.05em; height: 1.05em; }
+/* The one place an icon carries the accent: a card heading (§5). */
+.avo-title svg { width: var(--avo-icon-md); height: var(--avo-icon-md); color: var(--avo-primary); }
+
+/* ---- Fields with an icon ------------------------------------------------
+   A leading icon says what KIND of field it is (search, mail, key). A
+   trailing one is an ACTION (clear, reveal) or a STATE. Never a leading and a
+   trailing decoration on the same field — the second one is noise.
+
+   The icon is positioned, not inlined: `<input>` is a replaced element and
+   cannot hold a child. The wrapper owns the layout and the input gets padding
+   out of the icon's way. */
+.avo-field-icon { position: relative; display: flex; align-items: center; }
+.avo-field-icon > svg, .avo-field-icon > .avo-icon {
+  position: absolute;
+  left: 0.6rem;
+  width: var(--avo-icon-sm); height: var(--avo-icon-sm);
+  color: var(--avo-text-muted);
+  pointer-events: none;
+  fill: none; stroke: currentColor;
+  stroke-width: var(--avo-icon-stroke);
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.avo-field-icon > svg * { vector-effect: non-scaling-stroke; }
+.avo-field-icon > .avo-input { padding-left: 2.1rem; }
+.avo-field-icon.trailing > svg, .avo-field-icon.trailing > .avo-icon { left: auto; right: 0.6rem; }
+.avo-field-icon.trailing > .avo-input { padding-left: 0.65rem; padding-right: 2.1rem; }
+/* focus moves the icon to the text colour, so the field reads as active */
+.avo-field-icon:focus-within > svg, .avo-field-icon:focus-within > .avo-icon { color: var(--avo-text); }
+
+/* ==========================================================================
+   5 · Marketing components
+   ========================================================================== */
+
+/* ---- Kicker · "// SECTION NAME" -----------------------------------------
+   The trailing rule is a REAL element (`<i class="rule">`), not a ::after.
+   It draws itself in with the kicker (scaleX from the left) and a
+   pseudo-element cannot be animated. */
+.avo-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
+  font-family: var(--avo-font-mono);
+  font-size: var(--avo-text-kicker);
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--avo-text-muted);
+}
+.avo-kicker::before { content: "//"; color: var(--avo-primary); }
+.avo-kicker > .rule {
+  display: block;
+  width: 3rem; height: 1px;
+  background: var(--avo-line-strong);
+  transform-origin: left center;
+}
+
+/* ---- Serial · the small technical edge label ----------------------------
+   ID:0231 · SYS.ACTIVE · REV 0.1.0. Coral only when it is a LIVE value. */
+.avo-serial {
+  font-family: var(--avo-font-mono);
+  font-size: var(--avo-text-serial);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--avo-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.avo-serial.live { color: var(--avo-primary); }
+
+/* ---- Coral highlight for headline keywords · large/bold sizes only ------- */
+.avo-hl { color: var(--avo-primary); }
+.avo-band .avo-hl,
+.avo-light .avo-hl { color: var(--avo-primary); }
+/* At body size on a light surface, coral-500 is ~2.4:1. Drop a step. */
+.avo-band .avo-small .avo-hl,
+.avo-band p .avo-hl,
+.avo-light .avo-small .avo-hl,
+.avo-light p .avo-hl { color: var(--avo-primary-text-small); }
+
+/* ---- Buttons -------------------------------------------------------------
+   A glass surface with a hairline border. Three things happen on hover and all
+   three are the same gesture the rest of the system uses — a line passing over
+   something:
+
+     1. coral wipes in from the left  (scaleX, origin left)
+     2. the label rolls               (pure CSS, see below)
+     3. the icon steps forward        (a couple of pixels)
+
+   The primary button opts OUT of glass: a solid coral fill, because glass over
+   it would mute the one loud colour on the page. It keeps only the top edge. */
+.avo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  /* Height comes from the CONTROL SCALE, not from vertical padding. Padding
+     drove it before and produced 44px, which matched nothing else on the page.
+     See "One row, one height" below. */
+  min-height: var(--avo-ui-control-h-primary);
+  padding: 0 1.2rem;
+  font-family: var(--avo-font-mono);
+  font-size: var(--avo-text-xs, 0.8rem);
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  cursor: pointer;
+  overflow: hidden;
+  border-color: var(--avo-line-strong);
+  color: var(--avo-text);
+}
+/* the coral wipe */
+.avo-btn::before {
+  content: "";
+  position: absolute; inset: 0;
+  z-index: 0;
+  background: rgba(var(--avo-coral-rgb), 0.10);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--avo-dur-ui) var(--avo-ease-out);
+}
+.avo-btn > * { position: relative; z-index: 1; }
+.avo-btn:hover { border-color: var(--avo-primary); }
+.avo-btn:hover::before { transform: scaleX(1); }
+.avo-btn:active::before {
+  transform: scaleX(1);
+  background: rgba(var(--avo-coral-rgb), 0.2);
+  transition-duration: 0s;
+}
+.avo-btn svg { width: 1.05em; height: 1.05em; transition: transform var(--avo-dur-micro) var(--avo-ease-out); }
+.avo-btn:hover svg { transform: translateX(2px); }
+
+.avo-btn.primary {
+  background-image: none;
+  -webkit-backdrop-filter: none;
+          backdrop-filter: none;
+  background-color: var(--avo-primary);
+  border-color: var(--avo-primary);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.22);
+  color: var(--avo-primary-on);            /* black on coral. Always. */
+}
+.avo-btn.primary::before { background: rgba(255,255,255,0.22); }
+.avo-btn.primary:active { filter: brightness(0.9); }
+
+.avo-btn[disabled], .avo-btn[aria-disabled="true"] {
+  border-color: var(--avo-line);
+  color: var(--avo-text-muted);
+  cursor: not-allowed;
+  filter: none;
+}
+.avo-btn[disabled]::before, .avo-btn[aria-disabled="true"]::before { display: none; }
+
+.avo-btn.compact { min-height: var(--avo-ui-control-h-compact); padding: 0 0.7rem; font-size: var(--avo-ui-label); }
+.avo-btn.block { display: flex; width: 100%; }
+
+/* The label roll is PURE CSS: two stacked copies in an overflow-hidden box,
+   moved with translateY. No JS, so it works before hydration and it disappears
+   correctly with everything else under prefers-reduced-motion.
+
+   Two details that are easy to get wrong:
+     · the clipping box needs a fixed 1em height with line-height 1 on BOTH
+       copies, or a descender grows the box and the outgoing label stays
+       visible along the bottom edge
+     · the duplicate must be aria-hidden, or the accessible name is the label
+       twice */
+.avo-btn-label { position: relative; display: block; height: 1em; overflow: hidden; }
+.avo-btn-label > span { display: block; height: 1em; line-height: 1; transition: transform var(--avo-dur-ui) var(--avo-ease-out); }
+.avo-btn:hover .avo-btn-label > span { transform: translateY(-100%); }
+
+/* ---- Chip · "[ label ]" -------------------------------------------------
+   NOT a plate. A chip is a label, not a surface: flat, square, 1px border. */
+.avo-chip {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--avo-font-mono);
+  font-size: var(--avo-text-kicker);
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--avo-line);
+  border-radius: var(--avo-radius);
+  color: var(--avo-text);
+  background: none;
+}
+.avo-chip::before { content: "["; color: var(--avo-primary); margin-right: 0.3em; opacity: 0.7; }
+.avo-chip::after  { content: "]"; color: var(--avo-primary); margin-left: 0.3em; opacity: 0.7; }
+a.avo-chip, button.avo-chip { cursor: pointer; }
+a.avo-chip:hover, button.avo-chip:hover { border-color: var(--avo-primary); color: var(--avo-primary); }
+
+/* ---- Tag · status label, square. The v2 coral pill is retired. ----------- */
+.avo-tag {
+  display: inline-block;
+  font-family: var(--avo-font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: var(--avo-radius);
+  background: var(--avo-primary);
+  color: var(--avo-primary-on);
+}
+.avo-tag.success { background: var(--avo-success); color: #000; }
+.avo-tag.warning { background: var(--avo-warning); color: #000; }
+.avo-tag.error   { background: var(--avo-error);   color: #fff; }
+.avo-tag.info    { background: var(--avo-info);    color: #fff; }
+.avo-tag.quiet   { background: none; color: var(--avo-text-muted); border: 1px solid var(--avo-line); }
+
+/* ---- Link · the underline draws in from the left ------------------------ */
+.avo-link {
+  position: relative;
+  color: var(--avo-primary);
+  font-weight: 500;
+  text-decoration: none;
+}
+.avo-link::after {
+  content: "";
+  position: absolute; left: 0; right: 0; bottom: -3px; height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--avo-dur-ui) var(--avo-ease-out);
+}
+.avo-link:hover::after, .avo-link:focus-visible::after { transform: scaleX(1); }
+.avo-band .avo-link, .avo-light .avo-link { color: var(--avo-primary-text-small); }
+
+/* ---- Card · glass surface + permanent corner marks ----------------------
+   Hover and focus-within share the state, so a keyboard user tabbing into a
+   card sees what a pointer user sees. The marks come to full; the edge
+   brightens. Both are handled in §4. */
+.avo-card { padding: var(--avo-space-5); }
+
+/* ---- Topbar · progress / status readout --------------------------------- */
+.avo-topbar { height: 4px; width: 100%; background: var(--avo-line); }
+.avo-topbar > span {
+  display: block; height: 100%;
+  background: var(--avo-primary);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+/* ---- Loading · marks on a track, straight and bent -----------------------
+   One gesture, two shapes: coral marks at a constant period, marching. Straight
+   it is the 45° hatch (§5) sliding sideways; bent it is an even tick ring
+   rotating.
+
+   THE ANGLE DOES NOT SURVIVE THE BEND, and trying to keep it is what made the
+   first spinner look hand-scribbled. A ring cut out of straight 45° stripes
+   meets those stripes at a different angle at every point: near 45° and 225°
+   they run ALONG the ring and smear into long arcs, near 135° and 315° they cut
+   across it cleanly. The result is a wobbly circle, not hatch.
+
+   So the ring uses a constant ANGULAR period (repeating-conic-gradient) instead
+   of a constant pixel period. At a 2px ring thickness the slant of an individual
+   mark is invisible anyway — what carries the family resemblance is the period,
+   the hairline weight and the march, not the 45°. */
+.avo-loader, .avo-loading {
+  height: 6px;
+  width: 100%;
+  background: var(--avo-hatch);
+  background-size: var(--avo-hatch-period) var(--avo-hatch-period);
+  animation: avo-march 0.6s linear infinite;
+}
+@keyframes avo-march { to { background-position: var(--avo-hatch-period) 0; } }
+.avo-loader.inline, .avo-loading.inline { width: 52px; display: inline-block; vertical-align: middle; }
+
+/* Determinate — the bar only. A spinner cannot show a fraction without
+   becoming a pie chart, which is a shape this system does not own either.
+   `--avo-progress` runs 0–1 and is a READOUT: assign it, never tween it (§6). */
+.avo-loader.determinate, .avo-loading.determinate {
+  animation: none;
+  background:
+    linear-gradient(var(--avo-line), var(--avo-line)) no-repeat,
+    var(--avo-hatch);
+  background-size: 100% 100%, var(--avo-hatch-period) var(--avo-hatch-period);
+  -webkit-mask-image: linear-gradient(90deg, #000 0 calc(var(--avo-progress, 0) * 100%), transparent 0);
+          mask-image: linear-gradient(90deg, #000 0 calc(var(--avo-progress, 0) * 100%), transparent 0);
+}
+
+/* The spinner — the same marks, bent onto a ring.
+   TICK COUNT IS THE CONSTANT, not tick width — same rule as the bar's period,
+   and it keeps the ring the same object at 16, 24 and 28px. 12 ticks at a 1/2
+   duty on a 3px ring: fewer reads as a dotted circle, denser reads as a solid
+   one. The first pass used 20 on 2px, which at 16px is a 1.25px mark — still
+   drawn, no longer legible, and it read as a plain filled ring on a phone.
+   One set of values everywhere; a spinner that changes character between a
+   laptop and a phone is two spinners.
+   The mask must be `closest-side`. Percentages in a radial-gradient resolve
+   against the gradient RAY (farthest-corner by default), so `50%` on a 64px box
+   is 22.6px, not 32 — which silently renders a ring three times too thick. */
+.avo-spinner {
+  --avo-spinner-ticks: 12;
+  --avo-spinner-ring: 3px;
+  width: var(--avo-icon-md);
+  height: var(--avo-icon-md);
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: repeating-conic-gradient(
+      rgba(var(--avo-coral-rgb), 0.95) 0 calc(360deg / var(--avo-spinner-ticks) / 2),
+      transparent 0 calc(360deg / var(--avo-spinner-ticks)));
+  -webkit-mask: radial-gradient(circle closest-side,
+      transparent calc(100% - var(--avo-spinner-ring)),
+      #000 calc(100% - var(--avo-spinner-ring) + 0.5px));
+          mask: radial-gradient(circle closest-side,
+      transparent calc(100% - var(--avo-spinner-ring)),
+      #000 calc(100% - var(--avo-spinner-ring) + 0.5px));
+  animation: avo-spin 1.2s linear infinite;
+}
+@keyframes avo-spin { to { transform: rotate(360deg); } }
+/* Below ~16px the ring holds too few ticks to read as one; that is the floor,
+   not a preference. */
+.avo-spinner.sm { width: var(--avo-icon-sm); height: var(--avo-icon-sm); }
+.avo-spinner.lg { width: 28px; height: 28px; --avo-spinner-ring: 3.5px; }
+
+
+/* Reduced motion: both stop and stay visible. The hatch is a legible technical
+   fill standing still (§5), so unlike a swept bar it does not read as "stuck".
+   A loader has no end state to jump to (§6.8). */
+@media (prefers-reduced-motion: reduce) {
+  .avo-loader, .avo-loading, .avo-spinner { animation: none; }
+}
+
+/* ---- Rule · a hairline division ----------------------------------------- */
+.avo-rule { height: 1px; width: 100%; background: var(--avo-line); border: 0; }
+.avo-rule.strong { background: var(--avo-line-strong); }
+
+/* ==========================================================================
+   6 · Layout
+   Marketing proportions. A tool uses the `ui` scale in §7 instead.
+   ========================================================================== */
+.avo-container {
+  width: 100%;
+  max-width: var(--avo-maxw);
+  margin-inline: auto;
+  padding-inline: var(--avo-container-pad);
+  position: relative;
+  z-index: var(--avo-z-content);
+}
+.avo-section { padding-block: var(--avo-section-pad-y); position: relative; }
+.avo-hero { min-height: var(--avo-hero-min-height, 100vh); display: grid; place-items: center; position: relative; }
+
+.avo-stack   { display: flex; flex-direction: column; gap: var(--avo-gap, var(--avo-space-4)); }
+.avo-cluster { display: flex; flex-wrap: wrap; align-items: center; gap: var(--avo-gap, var(--avo-space-3)); }
+.avo-split   { display: flex; align-items: center; justify-content: space-between; gap: var(--avo-space-4); }
+.avo-grid    { display: grid; gap: var(--avo-gap, var(--avo-space-4)); }
+.avo-grid.c2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.avo-grid.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.avo-grid.c4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+/* `auto` keeps a card grid from collapsing to one column at a laptop width
+   while still wrapping on a phone. */
+.avo-grid.auto { grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); }
+@media (max-width: 900px) {
+  .avo-grid.c3, .avo-grid.c4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+  .avo-grid.c2, .avo-grid.c3, .avo-grid.c4 { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ==========================================================================
+   7 · Product UI
+   Same materials, different density.
+
+   THE RULE: round the CONTAINER, not the contents. A panel carries the 8px
+   corner and the glass; the rows, cells, list items, fields and menu entries
+   inside it are hairline divisions of ONE surface. A table where every row is
+   its own glassed panel is unreadable at 40 rows — and it is the most
+   expensive way to render one, because backdrop-filter costs a backdrop
+   re-rasterisation per frame and scales with radius x area.
+   ========================================================================== */
+.avo-ui { font-size: var(--avo-ui-text); }
+
+/* ---- The UI theme (v4.2) ------------------------------------------------
+   Values live in avocloud.tokens.css under `.avo-ui`. These are the parts a
+   token cannot carry.
+
+   No canvas pattern: the grid competes with the hairlines that ARE a
+   table's structure, and nobody can tell which lines carry meaning. */
+.avo-ui .avo-gridlines, .avo-ui .avo-crosshairs,
+.avo-ui.avo-gridlines, .avo-ui.avo-crosshairs { display: none; }
+/* The body carries the theme, so the overscroll area behind it must match or
+   a rubber-band scroll flashes the marketing black. */
+html:has(> body.avo-ui) { background: #141518; }
+html.avo-light:has(> body.avo-ui) { background: #F4F6F7; }
+.avo-ui { background: var(--avo-canvas); color: var(--avo-text); font-family: var(--avo-font-body); }
+/* Mono headlines read best with less negative tracking than Syne needed. */
+.avo-ui .avo-display-1, .avo-ui .avo-display-2 { font-weight: 600; letter-spacing: -0.01em; }
+.avo-ui .avo-stat { font-weight: 600; letter-spacing: -0.02em; }
+/* Wordmarks stay Syne: the avocloud lockup and a product name in a bar. */
+.avo-ui .avo-wordmark { letter-spacing: -0.01em; }
+.avo-ui-grid { display: grid; gap: var(--avo-ui-gap); }
+.avo-ui .avo-plate, .avo-ui .avo-card { padding: var(--avo-ui-pad-plate); }
+
+/* ---- Toolbar · the strip above a table or list -------------------------- */
+.avo-toolbar {
+  display: flex; align-items: center; gap: var(--avo-space-2);
+  height: var(--avo-ui-row-h);
+  padding: 0 var(--avo-ui-pad-plate);
+  border-bottom: 1px solid var(--avo-line-strong);
+}
+.avo-toolbar .spacer { margin-left: auto; }
+
+/* ---- Table --------------------------------------------------------------
+   No zebra striping. One hairline per row IS the structure; zebra fights the
+   hairline language and doubles the visual noise. */
+.avo-table { width: 100%; border-collapse: collapse; font-size: var(--avo-ui-text); }
+.avo-table th {
+  position: sticky; top: 0; z-index: var(--avo-z-sticky);
+  background: var(--avo-plate-raised);
+  font-family: var(--avo-font-mono);
+  font-size: var(--avo-ui-label);
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--avo-text-muted);
+  text-align: left;
+  padding: var(--avo-ui-pad-cell);
+  border-bottom: 1px solid var(--avo-line-strong);
+  white-space: nowrap;
+}
+.avo-table td {
+  height: var(--avo-ui-row-h);
+  padding: var(--avo-ui-pad-cell);
+  border-bottom: 1px solid var(--avo-line);
+}
+.avo-table tbody tr:hover { background: var(--avo-plate-raised); }
+/* Selected: a coral strip on the leading edge, never a coral fill across the row. */
+.avo-table tbody tr[aria-selected="true"] {
+  background: var(--avo-plate-raised);
+  box-shadow: inset 2px 0 0 var(--avo-primary);
+}
+/* Numbers are mono, tabular and right-aligned. Always. */
+.avo-table .num, .avo-table th.num {
+  font-family: var(--avo-font-mono);
+  font-size: var(--avo-ui-num);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+/* Sort indicator is a mono glyph in coral, not an icon font. */
+.avo-table th[aria-sort] { cursor: pointer; color: var(--avo-text); }
+.avo-table th[aria-sort="ascending"]::after  { content: " ▲"; color: var(--avo-primary); }
+.avo-table th[aria-sort="descending"]::after { content: " ▼"; color: var(--avo-primary); }
+/* A wide table scrolls inside its own box — the page never scrolls sideways. */
+.avo-table-scroll { overflow-x: auto; }
+
+/* ---- Fields -------------------------------------------------------------
+   Flat, square, 1px border. NOT plates.
+
+   A field is a control, like a chip: it lives INSIDE a surface rather than
+   being one. It carries the 6px control corner, a 1px border and an opaque
+   fill — no glass. Glass on every input in a form is a backdrop
+   re-rasterisation per field for a pane nobody is looking through. */
+.avo-field { display: flex; flex-direction: column; gap: 6px; }
+/* Label ABOVE the field. No floating labels — they hide the label exactly
+   when the user is typing. */
+.avo-label {
+  font-family: var(--avo-font-mono);
+  font-size: var(--avo-ui-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--avo-text-muted);
+}
+.avo-label .req { color: var(--avo-primary); }   /* required is marked; optional is not */
+
+.avo-input, .avo-select, .avo-textarea {
+  font-family: var(--avo-font-mono);
+  font-size: var(--avo-ui-text);
+  padding: 0.4rem 0.65rem;
+  width: 100%;
+  color: var(--avo-text);
+  background: var(--avo-plate-fill);
+  border: 1px solid var(--avo-line-strong);
+  border-radius: var(--avo-radius);
+}
+/* ---- One row, one height -------------------------------------------------
+   Every control that can sit beside another on the same line resolves to the
+   same four-step scale. A 36px input next to a 32px button is the most
+   visible way a UI looks unassembled, and it is invisible in the CSS because
+   each component looks fine on its own.
+
+     28px  compact — a control inside a dense toolbar or a table row
+     32px  default — inputs, selects, buttons in product UI
+     40px  primary — the one action a screen is about, and marketing buttons
+     24px  icon-only, the WCAG 2.5.8 floor
+
+   A textarea is exempt: it is multi-line and sizes to its content. */
+/* The scale is CONTEXT-DEPENDENT, and the context is the whole point: inside
+   `.avo-ui` everything drops to 32px together, outside it everything sits at
+   40px together. Pin one component to a fixed height and it disagrees with its
+   neighbour in the other context — which is the same bug one level up. */
+.avo-input, .avo-select { height: var(--avo-ui-control-h-primary); }
+.avo-ui .avo-input, .avo-ui .avo-select { height: var(--avo-ui-control-h); }
+.avo-ui .avo-btn { min-height: var(--avo-ui-control-h); }
+.avo-btn.compact, .avo-ui .avo-btn.compact { min-height: var(--avo-ui-control-h-compact); }
+.avo-input.compact, .avo-select.compact { height: var(--avo-ui-control-h-compact); }
+.avo-textarea { min-height: calc(var(--avo-ui-row-h) * 2.5); resize: vertical; line-height: 1.5; }
+.avo-input::placeholder, .avo-textarea::placeholder { color: var(--avo-text-muted); }
+.avo-input:hover, .avo-select:hover, .avo-textarea:hover { border-color: var(--avo-text-muted); }
+.avo-input[disabled], .avo-select[disabled], .avo-textarea[disabled] {
+  color: var(--avo-text-muted); background: var(--avo-canvas-soft); cursor: not-allowed;
+}
+/* Error is never colour alone — the message is the signal, the colour is
+   emphasis. `aria-invalid` is the hook, so the state is in the a11y tree too. */
+.avo-input[aria-invalid="true"], .avo-select[aria-invalid="true"], .avo-textarea[aria-invalid="true"] {
+  border-color: var(--avo-error);
+}
+/* Native arrow removed so the control matches the mono/square language. */
+.avo-select {
+  appearance: none;
+  padding-right: 1.8rem;
+  background-image: linear-gradient(45deg, transparent 50%, var(--avo-text-muted) 50%),
+                    linear-gradient(135deg, var(--avo-text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 55%, calc(100% - 9px) 55%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.avo-help { font-size: 0.78rem; color: var(--avo-text-muted); max-width: var(--avo-ui-measure); }
+.avo-error-msg { font-family: var(--avo-font-mono); font-size: var(--avo-ui-label); color: var(--avo-error); }
+
+/* ---- Checkbox · radio · switch ------------------------------------------
+   Drawn as MONO GLYPHS, not as boxes: `[x]` / `[ ]`, `(o)` / `( )`,
+   `[ ON  ]` / `[ OFF ]`. It is the same bracket language as `.avo-chip`, and
+   it is the one control set that looks like it belongs to this system rather
+   than to whichever framework drew it.
+
+   Why not a coral-filled box: every checked row would be a coral BLOCK, and
+   §3 allows one per view. A form with five ticks would spend the accent five
+   times over. Here coral is the mark, which is what §3 actually asks for.
+
+   THE HIT TARGET IS NOT THE GLYPH. The glyph is text-sized; the control
+   carries `min-width`/`min-height` of 24px so it still clears WCAG 2.5.8.
+   That is the one thing this treatment gets wrong if you just style the text.
+
+   The ON/OFF labels are padded to the SAME character count so the control
+   keeps its width between states — otherwise every toggle nudges its label
+   sideways as you flip it. */
+.avo-check, .avo-radio, .avo-switch {
+  appearance: none;
+  margin: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 24px;
+  font-family: var(--avo-font-mono);
+  font-size: var(--avo-text-xs, 0.8rem);
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: var(--avo-text-muted);
+  white-space: pre;            /* the padding spaces in `[ ON  ]` are real */
+  /* No colour transition — see the kit-wide rule. The mark snapping between
+     `[ ]` and `[x]` is the state change; fading its colour underneath it adds
+     nothing and wedges on a theme swap. */
+}
+.avo-switch { min-width: 52px; }
+
+.avo-check::before  { content: "[ ]"; }
+.avo-radio::before  { content: "( )"; }
+.avo-switch::before { content: "[ OFF ]"; }
+
+.avo-check:checked, .avo-radio:checked, .avo-switch:checked { color: var(--avo-primary); }
+.avo-check:checked::before  { content: "[x]"; }
+.avo-radio:checked::before  { content: "(o)"; }
+.avo-switch:checked::before { content: "[ ON  ]"; }
+/* a checkbox standing for a partial selection */
+.avo-check:indeterminate { color: var(--avo-text-muted-2); }
+.avo-check:indeterminate::before { content: "[-]"; }
+
+.avo-check:hover, .avo-radio:hover, .avo-switch:hover { color: var(--avo-text); }
+.avo-check:checked:hover, .avo-radio:checked:hover, .avo-switch:checked:hover {
+  color: var(--avo-primary-hover);
+}
+.avo-check[disabled], .avo-radio[disabled], .avo-switch[disabled] {
+  opacity: 0.4; cursor: not-allowed; color: var(--avo-text-muted);
+}
+/* Focus comes from the global `:focus-visible` contract in §8 — the ring sits
+   on the 24px box, not on the glyph, which is why the box exists. */
+
+.avo-choice { display: flex; align-items: center; gap: 0.55rem; cursor: pointer; font-size: var(--avo-ui-text); }
+
+
+/* ---- Rail · the sidebar -------------------------------------------------
+   A tool has more destinations than a marketing site and they need to stay
+   visible, so navigation is a rail, not a top bar. The rail is ONE plate; its
+   items are rows in it. */
+/* The rail FILLS the viewport and is bound to it, never to the document.
+
+   Full height because it is a panel, not a list that happens to be on the
+   left: ending it after the last item leaves a surface floating in a column of
+   canvas, and the frame stops reading as the edge of the app.
+
+   Bound to the viewport because a rail that grows with the page scrolls its
+   own navigation out of reach, which is the opposite of why a tool uses one
+   (§9: the destinations have to stay visible).
+
+   Three parts, all load-bearing:
+     · `align-self: start` — stops a grid or flex parent stretching it to the
+       ROW height, which is the document height. Without it the other two do
+       nothing.
+     · `sticky` + `top`    — it stays put while the content scrolls past.
+     · `height` + `overflow-y` — it fills the screen, and a rail with more
+       items than fit scrolls inside itself instead of overflowing.
+
+   `--avo-rail-top` is the inset from the viewport edge. It is subtracted TWICE
+   from the height: once for the top gap, once for the bottom. Subtract it once
+   and the bottom edge runs off screen. */
+.avo-rail {
+  width: var(--avo-ui-rail-w);
+  padding: var(--avo-space-2) 0;
+  z-index: var(--avo-z-rail);
+  position: sticky;
+  top: var(--avo-rail-top, 0px);
+  align-self: start;
+  height: calc(100vh - var(--avo-rail-top, 0px) * 2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* A rail shown INSIDE a page — a documentation example, a settings pane, a
+   region that is not the app frame — must not claim the viewport. Without this
+   escape the defaults above turn every embedded rail into a 100vh column. */
+.avo-rail.inline {
+  position: static;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+.avo-rail.collapsed { width: var(--avo-ui-rail-w-collapsed); }
+.avo-rail.collapsed a > span { display: none; }
+.avo-rail a {
+  display: flex; align-items: center; gap: 0.6rem;
+  height: var(--avo-ui-row-h);
+  padding: 0 var(--avo-ui-pad-plate);
+  font-family: var(--avo-font-mono);
+  font-size: var(--avo-ui-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--avo-text-muted);
+  text-decoration: none;
+}
+.avo-rail a:hover { color: var(--avo-text); background: var(--avo-plate-raised); }
+/* Active = a line being struck — the same gesture as the // kicker and the
+   table's selected row. Colour is never the only signal. */
+.avo-rail a.active { color: var(--avo-text); box-shadow: inset 2px 0 0 var(--avo-primary); }
+.avo-rail .avo-kicker { padding: var(--avo-space-3) var(--avo-ui-pad-plate) var(--avo-space-1); }
+
+/* ---- Tabs · the same struck line, horizontal ---------------------------- */
+.avo-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--avo-line-strong); }
+.avo-tabs > * {
+  padding: 0 var(--avo-space-4);
+  height: var(--avo-ui-row-h);
+  display: inline-flex; align-items: center;
+  font-family: var(--avo-font-mono);
+  font-size: var(--avo-ui-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--avo-text-muted);
+  background: none;
+  box-shadow: inset 0 -2px 0 transparent;
+  margin-bottom: -1px;
+}
+.avo-tabs > *:hover { color: var(--avo-text); }
+.avo-tabs > [aria-selected="true"] { color: var(--avo-text); box-shadow: inset 0 -2px 0 var(--avo-primary); }
+
+/* ---- Breadcrumb · pagination -------------------------------------------- */
+.avo-crumbs {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+  font-family: var(--avo-font-mono);
+  font-size: var(--avo-ui-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--avo-text-muted);
+}
+.avo-crumbs li + li::before { content: "/"; color: var(--avo-primary); margin-right: 0.5rem; }
+.avo-crumbs [aria-current="page"] { color: var(--avo-text); }
+
+.avo-pager { display: flex; align-items: center; gap: var(--avo-space-1); font-family: var(--avo-font-mono); font-size: var(--avo-ui-label); }
+.avo-pager > * {
+  min-width: var(--avo-ui-control-h-compact);
+  height: var(--avo-ui-control-h-compact);
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent;
+  color: var(--avo-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.avo-pager > *:hover { color: var(--avo-text); border-color: var(--avo-line); }
+.avo-pager > [aria-current="page"] { color: var(--avo-primary-on); background: var(--avo-primary); border-color: var(--avo-primary); }
+
+/* ---- Status strip -------------------------------------------------------
+   A 1px left strip in a semantic colour plus a mono label — not a filled
+   background. Coral is BRAND, never status: a coral row means "primary" or
+   "live", never "warning". */
+.avo-status { position: relative; box-shadow: inset 2px 0 0 currentColor; }
+.avo-status.success { color: var(--avo-success); }
+.avo-status.warning { color: var(--avo-warning); }
+.avo-status.error   { color: var(--avo-error); }
+.avo-status.info    { color: var(--avo-info); }
+/* The one exception: a row the user must not miss may be filled. */
+.avo-status.error.filled { background: color-mix(in srgb, var(--avo-error) 16%, var(--avo-plate-fill)); }
+.avo-status > * { color: var(--avo-text); }
+
+/* A dot that says what it means to a screen reader too. */
+.avo-dot { display: inline-block; width: 7px; height: 7px; background: currentColor; }
+
+/* ---- Skeleton · empty · error ------------------------------------------
+   Real content dimensions, no shimmer gradient — a pulsing opacity is enough. */
+.avo-skeleton { background: var(--avo-plate-raised); animation: avo-pulse 1.2s ease-in-out infinite; }
+@keyframes avo-pulse { 50% { opacity: 0.55; } }
+
+/* No illustration. The kicker, one mono line saying what would be here, and
+   the action that creates the first one. */
+.avo-empty {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--avo-space-3);
+  padding: var(--avo-space-7) var(--avo-ui-pad-plate);
+  color: var(--avo-text-muted);
+}
+
+/* ---- Dialog · scrim ----------------------------------------------------
+   Built for <dialog>, which brings focus trapping, Esc, inert background and
+   the top layer for free. Hand-rolling those is how a modal ends up
+   keyboard-hostile. */
+.avo-dialog {
+  /* FIXED TO THE VIEWPORT, NOT TO THE DOCUMENT.
+     The UA gives `dialog:modal` `position: fixed`, but the glass primitive
+     sets `position: relative` on every plate and a dialog is a plate — so the
+     modal keeps the flow position of the <dialog> element, and opening it
+     while scrolled leaves it off-screen behind a scrim that covers everything.
+     Stated on `.avo-dialog` rather than `.avo-dialog:modal` so it does not
+     depend on `:modal` support; a closed dialog is `display: none` anyway. */
+  position: fixed;
+  inset: 0;
+  width: min(var(--avo-ui-dialog-w), calc(100vw - 2rem));
+  /* A long dialog scrolls inside itself instead of running off both ends of a
+     phone screen. `dvh`, not `vh` — `vh` does not follow the mobile URL bar. */
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  /* Higher specificity than `.avo-ui .avo-plate`, which would otherwise hand a
+     modal the 16px table-cell padding. A dialog is not a dense surface. */
+  padding: var(--avo-space-5);
+  margin: auto;
+  color: var(--avo-text);
+  z-index: var(--avo-z-dialog);
+}
+.avo-ui .avo-dialog { padding: var(--avo-space-5); }
+.avo-dialog::backdrop { background: var(--avo-scrim); }
+
+/* ---- Scroll lock while a modal is open ----------------------------------
+   `showModal()` makes the rest of the document inert, so clicks and focus are
+   already blocked — but NOT scrolling. The page still scrolls under the
+   scrim, which reads as "this dialog is optional".
+
+   Set on `html` AND `body`: on iOS Safari `overflow: hidden` on the root alone
+   does not reliably stop a touch scroll.
+
+   Two rules, not one selector list: `:modal` is the correct test but is newer
+   than `:has()`, and one unknown selector invalidates an ENTIRE list — the
+   fallback would be dropped along with it. Separated, a browser that knows
+   `:has()` but not `:modal` still locks.
+
+   Known limit: on a platform with classic (space-taking) scrollbars the bar
+   disappears and the page shifts by its width. Compensating for that needs
+   the unlocked scrollbar width, which CSS cannot read. */
+html:has(dialog:modal), html:has(dialog:modal) body { overflow: hidden; }
+html:has(dialog.avo-dialog[open]), html:has(dialog.avo-dialog[open]) body { overflow: hidden; }
+.avo-scrim {
+  position: fixed; inset: 0;
+  z-index: var(--avo-z-scrim);
+  background: var(--avo-scrim);
+}
+.avo-drawer {
+  position: fixed; top: 0; bottom: 0; right: 0;
+  width: min(420px, 100vw);
+  z-index: var(--avo-z-dialog);
+  padding: var(--avo-space-5);
+  background: var(--avo-surface);
+  border-left: 1px solid var(--avo-line-strong);
+  transform: translateX(100%);
+  transition: transform var(--avo-dur-ui) var(--avo-ease-out);
+}
+.avo-drawer[data-open] { transform: translateX(0); }
+
+/* ---- Toast · tooltip · menu -------------------------------------------- */
+.avo-toast { width: var(--avo-ui-toast-w); padding: var(--avo-space-3) var(--avo-space-4); z-index: var(--avo-z-toast); }
+.avo-toast-stack {
+  position: fixed; right: var(--avo-space-5); bottom: var(--avo-space-5);
+  display: flex; flex-direction: column; gap: var(--avo-space-2);
+  z-index: var(--avo-z-toast);
+}
+.avo-tooltip {
+  padding: 0.3rem 0.55rem;
+  font-family: var(--avo-font-mono);
+  font-size: var(--avo-ui-label);
+  z-index: var(--avo-z-tooltip);
+  max-width: 32ch;
+}
+.avo-menu { padding: var(--avo-space-1) 0; min-width: 180px; z-index: var(--avo-z-dropdown); }
+.avo-menu button, .avo-menu a {
+  display: flex; align-items: center; gap: 0.55rem; width: 100%;
+  height: var(--avo-ui-row-h);
+  padding: 0 var(--avo-space-4);
+  font-family: var(--avo-font-mono);
+  font-size: var(--avo-ui-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--avo-text-muted);
+  text-align: left;
+}
+.avo-menu button:hover, .avo-menu a:hover { color: var(--avo-text); background: var(--avo-plate-raised); }
+.avo-menu .sep { height: 1px; background: var(--avo-line); margin: var(--avo-space-1) 0; }
+
+/* ---- Avatar · kbd · code ----------------------------------------------
+   A circle, outlined rather than bordered so the ring sits outside the image
+   box and the crop stays exactly circular. */
+.avo-avatar {
+  width: 68px; height: 68px;
+  object-fit: cover;
+  border-radius: var(--avo-radius-full);
+  outline: 1px solid var(--avo-line-strong);
+  background: var(--avo-surface);
+  flex-shrink: 0;
+}
+.avo-avatar.sm { width: 52px; height: 52px; outline-color: rgba(var(--avo-coral-rgb), 0.4); }
+.avo-kbd {
+  font-family: var(--avo-font-mono); font-size: 0.7rem;
+  padding: 2px 6px; border: 1px solid var(--avo-line-strong); color: var(--avo-text-muted);
+}
+.avo-code {
+  font-family: var(--avo-font-mono); font-size: 0.85em;
+  color: var(--avo-primary);
+  background: var(--avo-canvas-soft);
+  padding: 0.1em 0.35em;
+}
+.avo-band .avo-code, .avo-light .avo-code { color: var(--avo-primary-text-small); }
+
+/* ---- Charts -------------------------------------------------------------
+   Coral is series 1. Series 2+ descend the coral ramp, then neutrals. Never a
+   rainbow categorical palette. Bars are rectangles: no gradient fills, no
+   drop shadows, no rounded caps. A chart here looks like a printout. */
+.avo-ui {
+  --avo-series-1: var(--avo-primary);
+  --avo-series-2: var(--avo-coral-700);
+  --avo-series-3: var(--avo-coral-900);
+  --avo-series-4: var(--avo-text-muted-2);
+  --avo-series-5: var(--avo-text-muted);
+  --avo-axis: var(--avo-line);
+  --avo-axis-grid: color-mix(in srgb, var(--avo-line) 45%, transparent);
+}
+
+/* ==========================================================================
+   8 · The two contracts every avocloud property ships
+   ========================================================================== */
+
+/* ---- Focus --------------------------------------------------------------
+   Coral outline, offset so it never sits on the component's own hairline.
+   `:focus-visible` only, so pointer users don't get a ring on click and
+   keyboard users always do. `outline: none` on its own is a bug. */
+:focus-visible {
+  outline: var(--avo-focus-w) solid var(--avo-primary);
+  outline-offset: var(--avo-focus-offset);
+}
+/* Controls that already carry a 1px border sit tighter, or the ring floats. */
+.avo-input:focus-visible, .avo-select:focus-visible, .avo-textarea:focus-visible,
+.avo-check:focus-visible, .avo-radio:focus-visible, .avo-switch:focus-visible {
+  outline-offset: 2px;
+}
+/* Focus must stay distinguishable from hover, so a plate's outline does NOT
+   change on focus — the ring is the whole signal. */
+
+/* ---- Reduced motion -----------------------------------------------------
+   Motion in this system is always decoration: nothing carries meaning that
+   exists only while something moves, so removing it wholesale is always safe.
+   No "subtle version" — the end state, instantly. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .avo-loader, .avo-loading, .avo-spinner { animation: none; }
+}
+
+/* ==========================================================================
+   Utilities — the few that earn their place
+   ========================================================================== */
+.avo-muted    { color: var(--avo-text-muted); }
+.avo-measure  { max-width: var(--avo-measure); }
+.avo-ui .avo-measure { max-width: var(--avo-ui-measure); }
+.avo-nowrap   { white-space: nowrap; }
+.avo-truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Visually hidden, still read. For the label a design decided to drop but an
+   assistive technology still needs. */
+.avo-sr {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap; border: 0;
+}

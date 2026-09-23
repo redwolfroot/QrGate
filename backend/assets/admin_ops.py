@@ -132,6 +132,10 @@ def admin_ops(app=quart.Quart):
             conn.execute("DELETE FROM tickets")
             conn.execute("DELETE FROM daily_stats")
             conn.execute("DELETE FROM payment_intents")
+            # Sold/held seats and open online checkouts go with the tickets;
+            # a hold left behind would hand capacity back on expiry twice.
+            conn.execute("DELETE FROM seat_status")
+            conn.execute("DELETE FROM checkout_holds")
             # Free every reserved seat back to the configured capacity.
             conn.execute("UPDATE dates SET tickets_available = tickets")
             conn.commit()
@@ -172,6 +176,7 @@ def admin_ops(app=quart.Quart):
             for table in (
                 "tickets", "daily_stats", "payment_intents",
                 "dates", "show", "settings", "users",
+                "seat_status", "checkout_holds", "seatmaps",
             ):
                 conn.execute(f"DELETE FROM {table}")
             conn.commit()

@@ -120,7 +120,7 @@ $pageTitle = 'QrGate Admin Login';
 $assetBase = '../';
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="avo-ui">
 <?php include __DIR__ . '/../partials/head.php'; ?>
 <body class="min-h-screen flex flex-col">
     <div class="avo-topbar" aria-hidden="true"></div>
@@ -139,7 +139,7 @@ $assetBase = '../';
                         <path d="M12 21v-1"/>
                     </svg>
                 </div>
-                <div class="avo-kicker mb-1">// access control</div>
+                <div class="avo-kicker mb-1">access control</div>
                 <h1 class="text-2xl">QrGate <span class="avo-hl">Admin</span></h1>
                 <p class="avo-muted mt-1 text-sm">Enter your admin credentials</p>
             </div>

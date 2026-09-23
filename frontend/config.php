@@ -143,6 +143,10 @@ function makeApiCall($endpoint, $method = 'GET', $data = null)
             'Authorization: ' . API_KEY,
             'Content-Type: application/json'
         ];
+        // Let the backend rate-limit per visitor instead of per PHP server.
+        if (!empty($_SERVER['REMOTE_ADDR'])) {
+            $headers[] = 'X-Forwarded-For: ' . $_SERVER['REMOTE_ADDR'];
+        }
 
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
@@ -173,6 +177,54 @@ function makeApiCall($endpoint, $method = 'GET', $data = null)
         error_log('API Error: ' . $e->getMessage());
         return ['error' => $e->getMessage()];
     }
+}
+
+/**
+ * Like makeApiCall, but keeps the HTTP status and the error body, which the
+ * checkout needs to tell "sold out" from "backend down".
+ * Returns [int $httpCode, array|null $json].
+ */
+function qrgate_api($endpoint, $method = 'GET', $data = null)
+{
+    $ch = curl_init(API_BASE_URL . $endpoint);
+    $headers = ['Authorization: ' . API_KEY, 'Content-Type: application/json'];
+    if (!empty($_SERVER['REMOTE_ADDR'])) {
+        $headers[] = 'X-Forwarded-For: ' . $_SERVER['REMOTE_ADDR'];
+    }
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_TIMEOUT        => 30,
+    ]);
+    if ($method === 'POST') {
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data ?? new stdClass()));
+    }
+    $body = curl_exec($ch);
+    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
+    curl_close($ch);
+    if ($body === false) {
+        error_log('qrgate_api ' . $endpoint . ' failed: ' . $err);
+        return [0, null];
+    }
+    $json = json_decode($body, true);
+    return [$code, is_array($json) ? $json : null];
+}
+
+/**
+ * The show as the public shop may see it (no payment secrets, seated
+ * availability resolved). Null if the backend is unreachable.
+ */
+function qrgate_public_show()
+{
+    [$code, $json] = qrgate_api('/api/show/public');
+    if ($code !== 200 || !is_array($json) || ($json['status'] ?? '') !== 'success') {
+        error_log('qrgate_public_show failed: HTTP ' . $code);
+        return null;
+    }
+    return $json['show'];
 }
 
 function getShows()
@@ -328,7 +380,7 @@ function enforceSetup()
 {
     $script = basename($_SERVER['SCRIPT_NAME'] ?? '');
     // install.php drives the wizard; the proxies are used BY it. Let them pass.
-    $exempt = ['install.php', 'api-proxy.php', 'stripe-intent.php'];
+    $exempt = ['install.php', 'api-proxy.php'];
     if (in_array($script, $exempt, true)) {
         return;
     }

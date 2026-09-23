@@ -311,7 +311,7 @@ $extraHead = '<meta name="csrf-token" content="' . htmlspecialchars($csrfToken, 
 $h = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES);
 ?>
 <!DOCTYPE html>
-<html lang="<?php echo $lang_code; ?>">
+<html lang="<?php echo $lang_code; ?>" class="avo-ui">
 <?php include __DIR__ . '/../../partials/head.php'; ?>
 <body>
 <style>
