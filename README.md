@@ -52,12 +52,14 @@ QrGate is a comprehensive system for managing events, tickets, and access contro
 
 ## Screenshots
 
-<img width="2560" height="1492" alt="image" src="https://github.com/user-attachments/assets/d7e8562a-fd46-45d8-a389-45bc17bfee2e" />
-<img width="2560" height="1492" alt="image" src="https://github.com/user-attachments/assets/9dc34513-e245-4569-acdc-d3ec11d130da" />
-<img width="1840" height="1263" alt="image" src="https://github.com/user-attachments/assets/e013fbab-2cf3-4f2a-aeb7-dfbfa23a63f7" />
+<img width="2560" height="1211" alt="image" src="https://github.com/user-attachments/assets/8ee82489-1f0e-406a-8213-ce7d78ddb8b8" />
+<img width="2560" height="1211" alt="image" src="https://github.com/user-attachments/assets/8a3904c8-9b0e-4e20-827a-fdffdf651761" />
+<img width="2560" height="1211" alt="image" src="https://github.com/user-attachments/assets/28f64b50-0944-4770-9fac-7d268782fc3e" />
+PDF Ticket:
+<img width="793" height="1121" alt="image" src="https://github.com/user-attachments/assets/089db493-c0ed-4fca-a53c-86145683ef27" />
 
-<img width="585" height="1266" alt="IMG_8895" src="https://github.com/user-attachments/assets/45bad24d-b2eb-45c1-b5b6-9da6a7c2360b" />
-<img width="585" height="1266" alt="IMG_8894" src="https://github.com/user-attachments/assets/c383987e-23ac-4e6b-b2a1-f196bca5a937" />
+
+
 
 ## Installation
 
