@@ -31,7 +31,7 @@ QrGate is a comprehensive system for managing events, tickets, and access contro
 - **Guided Ticket Checkout**: Fullscreen, multi-step booking wizard (details → tickets & names → payment → confirm) with **Stripe** (card) and **cash** (pay-at-door) support, tuned for large screens and mobile alike
 - **Reserved Seating**: Optional per-event seat maps with a visual seat picker — choose the amount first, then tap the hall; an **auto best-seats / snap** helper places adjacent seats and avoids stranding lone gaps. Live availability polling plus atomic 10-minute seat holds keep two buyers from grabbing the same seat
 - **Binding Booking Consent**: Mandatory consent checkbox plus cancellation/storno info, enforced server-side; configurable contact email shown to customers
-- **Ticket Delivery**: PDF tickets by email with the QR code embedded inline (generated in-memory — A4 e-ticket, A5 box-office layout, and multi-ticket batch prints)
+- **Ticket Delivery**: A branded, light-theme ticket email (QR inline, event banner, status, cancel link) with the PDF ticket attached. PDFs are drawn fresh from the stored ticket on every request, so paid state, name and seat are always current — A4 e-ticket with banner and perforated stub, A5 box-office layout, and multi-ticket batch prints; IBM Plex Mono and Syne are embedded (`backend/assets/fonts`, SIL OFL)
 - **Self-Service Cancellation**: Every ticket email carries a secure, per-ticket cancel link — the buyer can cancel up to 24 hours before the event, with automatic Stripe refunds for online payments and the seat released back to the pool
 - **Access Control**: QR code-based ticket validation for entry, with a mobile handheld scanner — a re-scanned (already used) ticket triggers a loud **double-entry alarm** showing when it was first scanned
 - **Admin Panel**: Dashboard for events, dates, locations, images, tickets and statistics, plus a **live door check-in monitor** (checked-in vs. sold, occupancy %, latest scans)
@@ -276,7 +276,7 @@ QrGate/
 ├── backend/
 │   ├── assets/              # Backend modules (ticket management, validation, seat maps, etc.)
 │   ├── config/              # Configuration files (conf.py, env-overridable)
-│   ├── codes/               # Generated PDFs and QR codes
+│   ├── codes/               # Legacy PDF/QR files (PDFs are now rendered on demand)
 │   ├── data/                # Data storage (SQLite qrgate.db, settings, uploaded assets)
 │   ├── requirements.txt     # Python dependencies
 │   ├── Dockerfile           # Backend container image

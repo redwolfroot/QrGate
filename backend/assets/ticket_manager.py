@@ -1,6 +1,6 @@
 import quart
 import config.conf as config # type: ignore
-from assets.data import load_tickets, save_tickets, load_ticket_id
+from assets.data import save_tickets, load_ticket_id
 from assets.data import load_date, save_date, load_show, decrement_availability
 from assets.data import release_availability, is_intent_used, mark_intent_used
 from assets.data import (
@@ -18,7 +18,6 @@ from assets.stats import log_ticket_refund
 from assets.timeutil import local_now, today_iso
 from assets.boxoffice import _seat_base_prices
 import asyncio
-import os
 import re
 import hashlib
 import hmac
@@ -26,21 +25,8 @@ import urllib.parse
 import urllib.request
 import urllib.error
 from html import escape
-from werkzeug.security import safe_join
 
-from reportlab.lib.pagesizes import A4, A5
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Paragraph,
-    Image,
-    Spacer,
-    Table,
-    TableStyle,
-    PageBreak,
-)
-from reportlab.lib.units import inch
+from assets import ticket_pdf
 import io
 import smtplib
 from email.mime.text import MIMEText
@@ -84,67 +70,75 @@ def _token_valid(tid: str, token: Optional[str]) -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# Ticket i18n for the generated PDF + email. Keyed by the buyer's UI language at
-# purchase time (stored on the ticket as `lang`); unknown/missing falls back to
-# English. "// TICKET" and the avocloud footer stay brand-constant.
+# Ticket email copy. Keyed by the buyer's UI language at purchase time (stored
+# on the ticket as `lang`); unknown/missing falls back to English. German says
+# "du", like the shop. The PDF has its own table in ticket_pdf.TEXT.
 # --------------------------------------------------------------------------- #
 TICKET_I18N = {
     "en": {
-        "label_NAME": "NAME", "label_DATE": "DATE", "label_TIME": "TIME",
-        "label_SEAT": "SEAT", "label_LOCATION": "LOCATION", "label_ADDRESS": "ADDRESS",
-        "pdf_simple_note": "Show this ticket at the entrance.",
-        "pdf_std_note1": "Have this QR code ready at the entrance — it will be "
-                         "scanned and validated on entry.",
-        "pdf_std_note2": "Each ticket is valid for a single entry and only on the "
-                         "date shown above. To re-enter, ask for a stamp or "
-                         "wristband at the exit.",
-        "email_head_paid": 'Your ticket has been <span style="color:#C73D20;">paid</span>',
-        "email_status_paid_onsite": "Your ticket was paid for on site — this email "
-            "confirms the payment. Your ticket below (and the attached PDF) is "
-            "ready for entry.",
-        "email_head_ready": 'Your ticket is <span style="color:#C73D20;">ready</span>',
-        "email_status_ready": "Your ticket is paid and ready to use.",
-        "email_head_ticket": 'Your <span style="color:#C73D20;">ticket</span>',
-        "email_status_unpaid": "Your ticket has not been paid yet, so it can't be "
-            "used. Please pay at the entrance on the day of the event to activate it.",
-        "email_usage": "Have this QR code ready at the entrance — it is scanned and "
-            "validated on entry. Each ticket is valid for a single entry on the date "
-            "shown above. To re-enter, ask for a stamp or wristband at the exit. Your "
-            "ticket is also attached as a PDF.",
+        "label_NAME": "Name", "label_DATE": "Date", "label_TIME": "Starts",
+        "label_SEAT": "Seat", "label_LOCATION": "Venue",
+        "free_seating": "Free seating",
+        "kicker": "Admission ticket",
+        "eticket": "E-ticket",
+        "tid": "Ticket no.",
+        "subject_ready": "Your ticket: {event}, {date}",
+        "subject_unpaid": "Your reservation: {event}, {date}",
+        "subject_paid": "Paid: your ticket for {event}",
+        "chip_paid": "Paid", "chip_unpaid": "Payment due",
+        "email_head_paid": "Thanks, your ticket is paid.",
+        "email_status_paid_onsite": "We received your payment at the box office. "
+            "Your ticket is now valid for entry.",
+        "email_head_ready": "Your ticket is ready.",
+        "email_status_ready": "Paid and valid. Show the QR code below at the door.",
+        "email_head_ticket": "Your seats are reserved.",
+        "email_status_unpaid": "Please pay at the box office on the day, before "
+            "entry. The QR code is activated once you have paid.",
+        "notes": [
+            "Show the QR code at the door, on your phone or printed.",
+            "Valid for one entry on the date shown.",
+            "To re-enter, get a stamp or wristband at the exit.",
+        ],
+        "open_pdf": "Open ticket as PDF",
+        "pdf_attached": "Your ticket is also attached as a PDF.",
         "email_cancel_pre": "Can't make it? ",
         "email_cancel_link": "Cancel this ticket",
-        "email_cancel_post": " (a refund is issued automatically for online payments, "
-            "up to 24 hours before the event).",
+        "email_cancel_post": ". Online payments are refunded automatically, up to "
+            "24 hours before the event.",
+        "contact": "Questions?",
         "footer": "Managed by QrGate · avocloud.net",
     },
     "de": {
-        "label_NAME": "NAME", "label_DATE": "DATUM", "label_TIME": "UHRZEIT",
-        "label_SEAT": "PLATZ", "label_LOCATION": "ORT", "label_ADDRESS": "ADRESSE",
-        "pdf_simple_note": "Bitte dieses Ticket am Eingang vorzeigen.",
-        "pdf_std_note1": "Halten Sie diesen QR-Code am Eingang bereit — er wird beim "
-                         "Einlass gescannt und geprüft.",
-        "pdf_std_note2": "Jedes Ticket gilt für einen einmaligen Eintritt und nur am "
-                         "oben angegebenen Datum. Für den Wiedereinlass bitte am "
-                         "Ausgang einen Stempel oder ein Bändchen verlangen.",
-        "email_head_paid": 'Ihr Ticket wurde <span style="color:#C73D20;">bezahlt</span>',
-        "email_status_paid_onsite": "Ihr Ticket wurde vor Ort bezahlt — diese E-Mail "
-            "bestätigt die Zahlung. Ihr Ticket unten (und das angehängte PDF) ist "
-            "bereit für den Einlass.",
-        "email_head_ready": 'Ihr Ticket ist <span style="color:#C73D20;">bereit</span>',
-        "email_status_ready": "Ihr Ticket ist bezahlt und einsatzbereit.",
-        "email_head_ticket": 'Ihr <span style="color:#C73D20;">Ticket</span>',
-        "email_status_unpaid": "Ihr Ticket wurde noch nicht bezahlt und kann daher "
-            "nicht verwendet werden. Bitte bezahlen Sie am Veranstaltungstag am "
-            "Eingang, um es zu aktivieren.",
-        "email_usage": "Halten Sie diesen QR-Code am Eingang bereit — er wird beim "
-            "Einlass gescannt und geprüft. Jedes Ticket gilt für einen einmaligen "
-            "Eintritt am oben angegebenen Datum. Für den Wiedereinlass bitte am "
-            "Ausgang einen Stempel oder ein Bändchen verlangen. Ihr Ticket ist "
-            "außerdem als PDF angehängt.",
+        "label_NAME": "Name", "label_DATE": "Datum", "label_TIME": "Beginn",
+        "label_SEAT": "Platz", "label_LOCATION": "Ort",
+        "free_seating": "Freie Platzwahl",
+        "kicker": "Eintrittskarte",
+        "eticket": "E-Ticket",
+        "tid": "Ticket-Nr.",
+        "subject_ready": "Dein Ticket: {event}, {date}",
+        "subject_unpaid": "Deine Reservierung: {event}, {date}",
+        "subject_paid": "Bezahlt: dein Ticket für {event}",
+        "chip_paid": "Bezahlt", "chip_unpaid": "Zahlung offen",
+        "email_head_paid": "Danke, dein Ticket ist bezahlt.",
+        "email_status_paid_onsite": "Deine Zahlung an der Kasse ist eingegangen. "
+            "Das Ticket ist jetzt für den Einlass gültig.",
+        "email_head_ready": "Dein Ticket ist bereit.",
+        "email_status_ready": "Bezahlt und gültig. Zeig den QR-Code unten am Einlass.",
+        "email_head_ticket": "Deine Plätze sind reserviert.",
+        "email_status_unpaid": "Bitte bezahle am Veranstaltungstag vor dem Einlass "
+            "an der Kasse. Der QR-Code wird mit der Zahlung freigeschaltet.",
+        "notes": [
+            "QR-Code am Einlass zeigen, auf dem Handy oder ausgedruckt.",
+            "Gilt für einen Eintritt am angegebenen Termin.",
+            "Wiedereinlass nur mit Stempel oder Bändchen vom Ausgang.",
+        ],
+        "open_pdf": "Ticket als PDF öffnen",
+        "pdf_attached": "Dein Ticket hängt außerdem als PDF an.",
         "email_cancel_pre": "Verhindert? ",
         "email_cancel_link": "Ticket stornieren",
-        "email_cancel_post": " (bei Online-Zahlung wird der Betrag automatisch "
-            "zurückerstattet, bis 24 Stunden vor der Veranstaltung).",
+        "email_cancel_post": ". Online-Zahlungen werden automatisch erstattet, bis "
+            "24 Stunden vor der Veranstaltung.",
+        "contact": "Fragen?",
         "footer": "Verwaltet mit QrGate · avocloud.net",
     },
 }
@@ -153,57 +147,6 @@ TICKET_I18N = {
 def _tx(lang):
     """Translation table for a ticket's language (falls back to English)."""
     return TICKET_I18N.get(str(lang or "en").lower(), TICKET_I18N["en"])
-
-
-# ---- avocloud brand palette for PDFs (mirrors frontend/assets/avocloud.css) ----
-PDF_CORAL = colors.HexColor("#C73D20")
-PDF_CORAL_LIGHT = colors.HexColor("#FFD1C6")
-PDF_INK = colors.HexColor("#141414")
-PDF_MUTED = colors.HexColor("#6B6B63")
-PDF_LINE = colors.HexColor("#DCD8CB")
-
-# A5 box-office ticket geometry
-SIMPLE_MARGIN = 26
-SIMPLE_CONTENT_W = A5[0] - 2 * SIMPLE_MARGIN
-
-# A4 public-shop ticket geometry
-STD_MARGIN = 36
-STD_CONTENT_W = A4[0] - 2 * STD_MARGIN
-
-
-def _perforation(width: float, pad_top: int = 6, pad_bottom: int = 6):
-    """A dashed perforation seam (the ticket-stub tear line) spanning `width`,
-    matching the web/email stub. Drawn as a graphics Line so the dashes render
-    reliably, with the surrounding whitespace baked into the drawing height."""
-    from reportlab.graphics.shapes import Drawing, Line
-
-    d = Drawing(width, pad_top + pad_bottom + 2)
-    y = pad_bottom + 1
-    ln = Line(0, y, width, y)
-    ln.strokeColor = colors.HexColor("#B0AC9F")
-    ln.strokeWidth = 1.3
-    ln.strokeDashArray = [4, 4]
-    d.add(ln)
-    return d
-
-
-def _seat_pill(text: str, font_size: float = 12):
-    """A coral rounded 'pill' flowable for the reserved seat, mirroring the web
-    stub's seat chip. Text-only (Helvetica has no ticket emoji glyph)."""
-    st = ParagraphStyle(
-        "seat_pill", fontName="Helvetica-Bold", fontSize=font_size,
-        textColor=PDF_CORAL, leading=font_size + 3,
-    )
-    pill = Table([[Paragraph(str(text), st)]], hAlign="LEFT")
-    pill.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), PDF_CORAL_LIGHT),
-        ("LEFTPADDING", (0, 0), (-1, -1), 11),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 11),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("ROUNDEDCORNERS", [9, 9, 9, 9]),
-    ]))
-    return pill
 
 
 def _fmt_ticket_date(d: str) -> str:
@@ -247,302 +190,15 @@ def _qr_png_bytes(tid: str) -> bytes:
     we never persist it to disk anymore."""
     qr = qrcode.QRCode(
         version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,  # type: ignore
+        error_correction=qrcode.constants.ERROR_CORRECT_M,  # type: ignore
         box_size=10,
-        border=4,
+        border=2,  # the white frame around it in the email adds the rest
     )
     qr.add_data(tid)
     qr.make(fit=True)
     buf = io.BytesIO()
     qr.make_image(fill_color="black", back_color="white").save(buf, format="PNG")
     return buf.getvalue()
-
-
-def _qr_image_flowable(tid: str, width: float, height: float) -> Image:
-    """A reportlab Image of the QR, fed from an in-memory PNG (no disk file).
-    A fresh BytesIO is handed to reportlab and kept alive by the returned
-    Image until the document is built."""
-    return Image(io.BytesIO(_qr_png_bytes(tid)), width=width, height=height)
-
-
-def simple_ticket_flowables(
-    tid: str,
-    first_name: str,
-    last_name: str,
-    date: str,
-    event_time: str,
-    show_data: dict,
-    seat_label: str = "",
-    lang: str = "en",
-):
-    """
-    Flowables for ONE box-office ticket on an A5 page, avocloud-branded:
-    coral header band, clean label/value info rows, framed QR, mono ID, footer.
-    Shared by the single-ticket PDF and the combined batch PDF so they match.
-    """
-    T = _tx(lang)
-    base = getSampleStyleSheet()
-
-    eyebrow_style = ParagraphStyle(
-        "tf_eyebrow", parent=base["Normal"], fontName="Courier-Bold",
-        fontSize=8, textColor=PDF_CORAL_LIGHT, leading=10, spaceAfter=3,
-    )
-    title_style = ParagraphStyle(
-        "tf_title", parent=base["Normal"], fontName="Helvetica-Bold",
-        fontSize=21, textColor=colors.white, leading=24,
-    )
-    label_style = ParagraphStyle(
-        "tf_label", parent=base["Normal"], fontName="Helvetica-Bold",
-        fontSize=7.5, textColor=PDF_MUTED, leading=10,
-    )
-    value_style = ParagraphStyle(
-        "tf_value", parent=base["Normal"], fontName="Helvetica-Bold",
-        fontSize=12.5, textColor=PDF_INK, leading=15,
-    )
-    id_style = ParagraphStyle(
-        "tf_id", parent=base["Normal"], fontName="Courier-Bold",
-        fontSize=13, textColor=PDF_INK, alignment=1, leading=16,
-    )
-    note_style = ParagraphStyle(
-        "tf_note", parent=base["Normal"], fontName="Helvetica",
-        fontSize=9, textColor=PDF_MUTED, alignment=1, leading=12,
-    )
-    foot_style = ParagraphStyle(
-        "tf_foot", parent=base["Normal"], fontName="Helvetica",
-        fontSize=7.5, textColor=PDF_MUTED, alignment=1, leading=10,
-    )
-
-    els: list = []
-
-    # --- coral header band ---
-    banner = Table(
-        [[[Paragraph("// TICKET", eyebrow_style),
-           Paragraph(show_data.get("orga_name", "Event"), title_style)]]],
-        colWidths=[SIMPLE_CONTENT_W],
-    )
-    banner.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), PDF_CORAL),
-        ("LEFTPADDING", (0, 0), (-1, -1), 20),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 20),
-        ("TOPPADDING", (0, 0), (-1, -1), 18),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 18),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-    ]))
-    els.append(banner)
-    els.append(_perforation(SIMPLE_CONTENT_W, pad_top=9, pad_bottom=16))
-
-    # --- info rows (label / value) ---
-    fn = str(first_name).strip() if _meaningful(first_name) else ""
-    ln = str(last_name).strip() if _meaningful(last_name) else ""
-    full_name = f"{fn} {ln}".strip()
-    rows = []
-    if full_name:                      # omit NAME row for unnamed/"Unknown" tickets
-        rows.append((T["label_NAME"], full_name))
-    date_val = _fmt_ticket_date(date) if date else ""
-    if date_val:                       # always show a date (real date or "Unlimited")
-        rows.append((T["label_DATE"], date_val))
-        if date != "Unlimited" and event_time:
-            rows.append((T["label_TIME"], event_time))
-    if _meaningful(seat_label):
-        rows.append((T["label_SEAT"], str(seat_label).strip()))
-    loc_name, loc_addr = _location_for_date(date, show_data)
-    if loc_name:
-        rows.append((T["label_LOCATION"], loc_name))
-    if loc_addr:
-        rows.append((T["label_ADDRESS"], loc_addr))
-    if rows:
-        info = Table(
-            [
-                [
-                    Paragraph(l, label_style),
-                    _seat_pill(v, 11) if l == "SEAT" else Paragraph(v, value_style),
-                ]
-                for l, v in rows
-            ],
-            colWidths=[SIMPLE_CONTENT_W * 0.26, SIMPLE_CONTENT_W * 0.74],
-        )
-        info.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 7),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ("LINEBELOW", (0, 0), (-1, -2), 0.5, PDF_LINE),
-        ]))
-        els.append(info)
-        els.append(Spacer(1, 28))
-
-    # --- framed QR, centered ---
-    qr_box = Table([[_qr_image_flowable(tid, 156, 156)]], colWidths=[188])
-    qr_box.hAlign = "CENTER"
-    qr_box.setStyle(TableStyle([
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("BOX", (0, 0), (-1, -1), 1, PDF_LINE),
-        ("BACKGROUND", (0, 0), (-1, -1), colors.white),
-        ("TOPPADDING", (0, 0), (-1, -1), 16),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 16),
-    ]))
-    els.append(qr_box)
-    els.append(Spacer(1, 12))
-    els.append(Paragraph(tid, id_style))
-    els.append(Spacer(1, 20))
-    els.append(Paragraph(T["pdf_simple_note"], note_style))
-    els.append(Spacer(1, 6))
-    els.append(Paragraph("QrGate · avocloud.net", foot_style))
-    return els
-
-
-def standard_ticket_flowables(
-    tid: str,
-    first_name: str,
-    last_name: str,
-    date: str,
-    event_time: str,
-    show_data: dict,
-    seat_label: str = "",
-    lang: str = "en",
-):
-    """
-    Flowables for the full A4 public-shop ticket, avocloud-branded:
-    coral hero band (eyebrow + event name + subtitle), a clean info card,
-    a large framed QR with mono ID, concise usage notes, and a footer.
-    Visual sibling of simple_ticket_flowables, scaled up for A4.
-    """
-    T = _tx(lang)
-    base = getSampleStyleSheet()
-
-    eyebrow_style = ParagraphStyle(
-        "std_eyebrow", parent=base["Normal"], fontName="Courier-Bold",
-        fontSize=9, textColor=PDF_CORAL_LIGHT, leading=12, spaceAfter=4,
-    )
-    title_style = ParagraphStyle(
-        "std_title", parent=base["Normal"], fontName="Helvetica-Bold",
-        fontSize=30, textColor=colors.white, leading=34,
-    )
-    subtitle_style = ParagraphStyle(
-        "std_subtitle", parent=base["Normal"], fontName="Helvetica",
-        fontSize=12, textColor=PDF_CORAL_LIGHT, leading=16, spaceBefore=6,
-    )
-    label_style = ParagraphStyle(
-        "std_label", parent=base["Normal"], fontName="Helvetica-Bold",
-        fontSize=8.5, textColor=PDF_MUTED, leading=11,
-    )
-    value_style = ParagraphStyle(
-        "std_value", parent=base["Normal"], fontName="Helvetica-Bold",
-        fontSize=15, textColor=PDF_INK, leading=19,
-    )
-    id_style = ParagraphStyle(
-        "std_id", parent=base["Normal"], fontName="Courier-Bold",
-        fontSize=16, textColor=PDF_INK, alignment=1, leading=20,
-    )
-    note_style = ParagraphStyle(
-        "std_note", parent=base["Normal"], fontName="Helvetica",
-        fontSize=9.5, textColor=PDF_MUTED, leading=14,
-    )
-    foot_style = ParagraphStyle(
-        "std_foot", parent=base["Normal"], fontName="Helvetica",
-        fontSize=8, textColor=PDF_MUTED, alignment=1, leading=11,
-    )
-
-    els: list = []
-
-    # --- coral hero band: eyebrow + event name (+ optional subtitle) ---
-    hero_cell = [
-        Paragraph("// TICKET", eyebrow_style),
-        Paragraph(show_data.get("orga_name", "Event"), title_style),
-    ]
-    subtitle = (show_data.get("subtitle") or show_data.get("title") or "").strip()
-    if subtitle:
-        hero_cell.append(Paragraph(subtitle, subtitle_style))
-    hero = Table([[hero_cell]], colWidths=[STD_CONTENT_W])
-    hero.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), PDF_CORAL),
-        ("LEFTPADDING", (0, 0), (-1, -1), 30),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 30),
-        ("TOPPADDING", (0, 0), (-1, -1), 22),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 22),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-    ]))
-    els.append(hero)
-    # Perforation seam right under the coral band (ticket-stub cut).
-    els.append(_perforation(STD_CONTENT_W, pad_top=10, pad_bottom=14))
-
-    # --- info card (label / value rows) ---
-    fn = str(first_name).strip() if _meaningful(first_name) else ""
-    ln = str(last_name).strip() if _meaningful(last_name) else ""
-    full_name = f"{fn} {ln}".strip()
-    rows = []
-    if full_name:                      # omit NAME row for unnamed/"Unknown" tickets
-        rows.append((T["label_NAME"], full_name))
-    date_val = _fmt_ticket_date(date) if date else ""
-    if date_val:                       # always show a date (real date or "Unlimited")
-        rows.append((T["label_DATE"], date_val))
-        if date != "Unlimited" and event_time:
-            rows.append((T["label_TIME"], event_time))
-    if _meaningful(seat_label):
-        rows.append((T["label_SEAT"], str(seat_label).strip()))
-    loc_name, loc_addr = _location_for_date(date, show_data)
-    if loc_name:
-        rows.append((T["label_LOCATION"], loc_name))
-    if loc_addr:
-        rows.append((T["label_ADDRESS"], loc_addr))
-    if rows:
-        info = Table(
-            [
-                [
-                    Paragraph(l, label_style),
-                    _seat_pill(v, 13) if l == "SEAT" else Paragraph(v, value_style),
-                ]
-                for l, v in rows
-            ],
-            colWidths=[STD_CONTENT_W * 0.22, STD_CONTENT_W * 0.78],
-        )
-        info.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F2EFE6")),
-            ("BOX", (0, 0), (-1, -1), 1, PDF_LINE),
-            ("TOPPADDING", (0, 0), (-1, -1), 9),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
-            ("LEFTPADDING", (0, 0), (-1, -1), 22),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 22),
-            ("LINEBELOW", (0, 0), (-1, -2), 0.5, PDF_LINE),
-        ]))
-        els.append(info)
-        els.append(Spacer(1, 20))
-
-    # --- large framed QR, centered, with mono ID ---
-    qr_box = Table([[_qr_image_flowable(tid, 165, 165)]], colWidths=[209])
-    qr_box.hAlign = "CENTER"
-    qr_box.setStyle(TableStyle([
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("BOX", (0, 0), (-1, -1), 1, PDF_LINE),
-        ("BACKGROUND", (0, 0), (-1, -1), colors.white),
-        ("TOPPADDING", (0, 0), (-1, -1), 14),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
-    ]))
-    els.append(qr_box)
-    els.append(Spacer(1, 10))
-    els.append(Paragraph(tid, id_style))
-    els.append(Spacer(1, 18))
-
-    # --- usage notes ---
-    notes = [
-        T["pdf_std_note1"],
-        T["pdf_std_note2"],
-    ]
-    for n in notes:
-        els.append(Paragraph(n, note_style))
-        els.append(Spacer(1, 5))
-
-    els.append(Spacer(1, 8))
-    div = Table([[""]], colWidths=[STD_CONTENT_W])
-    div.setStyle(TableStyle([("LINEABOVE", (0, 0), (-1, -1), 0.5, PDF_LINE)]))
-    els.append(div)
-    els.append(Spacer(1, 8))
-    els.append(Paragraph(T["footer"], foot_style))
-    return els
 
 
 def create_ticket(app=quart.Quart):
@@ -840,304 +496,314 @@ def create_ticket(app=quart.Quart):
             return quart.jsonify({"status": "error", "message": str(e)}), 500
 
 
-def build_combined_simple_pdf(tids: List[str]):
-    """
-    Build ONE printable PDF holding every given ticket as its own A5 page
-    (avocloud-branded 'simple' box-office layout). Returns an io.BytesIO, or
-    None if none of the tids resolve to a stored ticket. Used by
-    /codes/pdf?tids=a,b,c so the box office prints a whole batch in one job.
-    """
-    tickets = load_tickets()
-    show_data = load_show()
-
-    elements: list = []
-    found = 0
-    for tid in tids:
-        ticket = tickets.get(tid)
-        if not ticket:
-            continue
-
-        first_name = ticket.get("first_name", "") or ""
-        last_name = ticket.get("last_name", "") or ""
-        date = ticket.get("valid_date", "") or ""
-        event_time = ""
-        if date and date != "Unlimited":
-            di = load_date(date)
-            event_time = di.get("time", "") if di else ""
-
-        if found > 0:
-            elements.append(PageBreak())
-        elements.extend(
-            simple_ticket_flowables(
-                tid, first_name, last_name, date, event_time, show_data,
-                ticket.get("seat_label") or "", ticket.get("lang") or "en",
-            )
-        )
-        found += 1
-
-    if found == 0:
+def ticket_view(tid: str, ticket: Optional[dict] = None,
+                show_data: Optional[dict] = None, **fallback) -> Optional[dict]:
+    """Everything the ticket PDF prints, taken from the stored ticket (so the
+    paid state, name and seat are always current). `fallback` fills in for a
+    ticket that is not stored (yet): first_name, last_name, date, event_time,
+    seat_label, lang, paid."""
+    if ticket is None:
+        ticket = load_ticket_id(tid)
+    if ticket is None and not fallback:
         return None
+    ticket = ticket or {}
+    show_data = show_data if show_data is not None else load_show()
 
-    buf = io.BytesIO()
-    pdf = SimpleDocTemplate(
-        buf, pagesize=A5,
-        rightMargin=SIMPLE_MARGIN, leftMargin=SIMPLE_MARGIN,
-        topMargin=SIMPLE_MARGIN, bottomMargin=SIMPLE_MARGIN,
-    )
-    pdf.build(elements)
-    buf.seek(0)
-    return buf
+    def pick(key, fb_key=None):
+        val = ticket.get(key)
+        return val if val not in (None, "") else fallback.get(fb_key or key)
 
-
-def generate_ticket_pdf(
-    tid: str,
-    first_name: str,
-    last_name: str,
-    date: str,
-    event_time: str,
-    variant: str = "standard",
-    seat_label: Optional[str] = None,
-    lang: Optional[str] = None,
-):
-    """
-    Generates a printable PDF ticket and saves it to ./codes/{tid}.pdf
-    The QR code is rendered in memory and embedded directly into the PDF.
-
-    Variants:
-      - "standard": Full A4 ticket with banner and detailed info (default)
-      - "simple": Minimal A5 ticket for fast printing at the box office
-
-    seat_label / lang: when None they are looked up from the stored ticket, so
-    every PDF path shows the seat and uses the buyer's language.
-    """
-    pdf_filename = f"./codes/{tid}.pdf"
-
-    os.makedirs("./codes", exist_ok=True)
-
-    # Fall back to the stored ticket's seat + language so lazy PDF generation
-    # (e.g. from send_email) still prints the seat and localizes correctly
-    # without every caller passing them.
-    if seat_label is None or lang is None:
-        try:
-            _t = load_ticket_id(tid) or {}
-        except Exception:
-            _t = {}
-        if seat_label is None:
-            seat_label = _t.get("seat_label") or ""
-        if lang is None:
-            lang = _t.get("lang") or "en"
-
-    # The QR is drawn straight into the PDF from an in-memory PNG by the
-    # flowables below — no standalone .png file is written to disk.
-    show_data = load_show()
-    styles = getSampleStyleSheet()
-
-    if variant == "simple":
-        pdf = SimpleDocTemplate(
-            pdf_filename,
-            pagesize=A5,
-            rightMargin=SIMPLE_MARGIN,
-            leftMargin=SIMPLE_MARGIN,
-            topMargin=SIMPLE_MARGIN,
-            bottomMargin=SIMPLE_MARGIN,
-        )
-        elements = simple_ticket_flowables(
-            tid, first_name, last_name, date, event_time, show_data,
-            seat_label or "", lang or "en",
-        )
-
+    fn = str(pick("first_name") or "").strip()
+    ln = str(pick("last_name") or "").strip()
+    name = " ".join(x for x in (fn, ln) if _meaningful(x))
+    date = str(pick("valid_date", "date") or "")
+    event_time = fallback.get("event_time") or ""
+    if not event_time and date and date != "Unlimited":
+        di = load_date(date)
+        event_time = (di or {}).get("time", "") if di else ""
+    loc_name, loc_addr = _location_for_date(date, show_data)
+    seat = pick("seat_label")
+    if ticket.get("status") == "cancelled":
+        status = "cancelled"
     else:
-        pdf = SimpleDocTemplate(
-            pdf_filename,
-            pagesize=A4,
-            rightMargin=STD_MARGIN,
-            leftMargin=STD_MARGIN,
-            topMargin=STD_MARGIN,
-            bottomMargin=STD_MARGIN,
-        )
-        elements = standard_ticket_flowables(
-            tid, first_name, last_name, date, event_time, show_data,
-            seat_label or "", lang or "en",
-        )
+        paid = ticket.get("paid") if "paid" in ticket else fallback.get("paid", True)
+        status = "paid" if paid else "unpaid"
+    return {
+        "tid": str(tid),
+        "name": name,
+        "date": date,
+        "time": str(event_time or ""),
+        "seat": str(seat).strip() if _meaningful(seat) else "",
+        "venue": loc_name,
+        "address": loc_addr,
+        "status": status,
+        "lang": str(pick("lang") or "en"),
+        "orga": str(show_data.get("orga_name") or ""),
+        "title": str(show_data.get("title") or "").strip(),
+        "subtitle": str(show_data.get("subtitle") or "").strip(),
+        "contact": str(show_data.get("contact_email") or "").strip(),
+    }
 
-    pdf.build(elements)
-    return pdf_filename
+
+def render_ticket_pdf(tids: List[str], fmt: str = "standard") -> Optional[bytes]:
+    """One PDF with a page per stored ticket, or None if none exists.
+    fmt "standard" = A4 (the buyer's ticket), "simple" = A5 (box-office print)."""
+    show_data = load_show()
+    views = [v for v in (ticket_view(t, show_data=show_data) for t in tids) if v]
+    return ticket_pdf.render_pdf(views, fmt) if views else None
+
+
+# ---- email palette: the kit's light roles (BRANDING §3, v4.2) ---------------
+MAIL_CANVAS = "#F4F6F7"       # --avo-canvas (light)
+MAIL_SURFACE = "#FFFFFF"      # --avo-surface (light)
+MAIL_LINE = "#DADDE0"         # --avo-line (light) flattened onto white
+MAIL_LINE_SOFT = "#E8EAEC"
+MAIL_TEXT = "#0A0A0A"         # --avo-text (light)
+MAIL_MUTED = "#555555"        # --avo-text-muted (light)
+MAIL_FAINT = "#8A8C90"
+MAIL_CORAL = "#FF6B4A"        # --avo-primary: fills, black text on it
+MAIL_CORAL_TEXT = "#C73D20"   # small coral text on light
+MAIL_SUCCESS = "#46A758"
+MAIL_WARNING = "#E0A33A"
+# The UI theme's faces with fallbacks. Apple Mail and iOS load the web font,
+# Gmail and Outlook fall back to their system mono; the layout holds either way.
+MAIL_MONO = ("'IBM Plex Mono','SFMono-Regular',Menlo,Consolas,'Liberation Mono',"
+             "'Courier New',monospace")
+MAIL_WORDMARK = "'Syne','Arial Black','Helvetica Neue',Arial,sans-serif"
+MAIL_BANNER_ASPECT = 3.2      # same crop as the PDF banner
 
 
 def _ticket_email_html(
     *,
     event_name: str,
+    title: str,
     subtitle: str,
     headline: str,
     status_msg: str,
+    status: str,
     full_name: str,
     date_val: str,
     event_time: str,
     location_name: str,
     location_address: str,
     tid: str,
-    qr_url: str,
+    pdf_url: str,
     cancel_url: str = "",
     seat_label: str = "",
+    contact: str = "",
+    has_banner: bool = False,
     lang: str = "en",
 ) -> str:
     """
-    Build an email-client-safe, avocloud-branded ticket email (table layout,
-    inline styles, no fixed positioning / CSS animations / web fonts).
+    The ticket email, avocloud kit v4.2 light theme: table layout, inline
+    styles, no positioning, no animation; the web fonts are an enhancement.
     All dynamic strings must already be HTML-escaped by the caller.
     """
     T = _tx(lang)
-    def _row(label: str, value: str, last: bool = False) -> str:
-        border = "" if last else "border-bottom:1px solid #DCD8CB;"
-        return (
+    mono = f"font-family:{MAIL_MONO};"
+
+    def _label(text: str) -> str:
+        return (f'<div style="{mono}font-size:10px;font-weight:500;letter-spacing:1.4px;'
+                f'text-transform:uppercase;color:{MAIL_MUTED};margin:0 0 6px 0;">{text}</div>')
+
+    def _field(label: str, value: str, extra: str = "", seat: bool = False) -> str:
+        if seat:
+            val = (f'<span style="display:inline-block;padding:5px 10px;border-radius:6px;'
+                   f'background-color:{MAIL_CORAL};color:#000000;{mono}font-size:15px;'
+                   f'font-weight:600;">{value}</span>')
+        else:
+            val = (f'<div style="{mono}font-size:15px;font-weight:500;line-height:1.4;'
+                   f'color:{MAIL_TEXT};">{value}</div>')
+        if extra:
+            val += (f'<div style="{mono}font-size:12px;line-height:1.5;color:{MAIL_MUTED};'
+                    f'margin-top:2px;">{extra}</div>')
+        return _label(label) + val
+
+    fields = []
+    if full_name:
+        fields.append(_field(T["label_NAME"], full_name))
+    if date_val:
+        fields.append(_field(T["label_DATE"], date_val))
+    if event_time:
+        fields.append(_field(T["label_TIME"], event_time))
+    fields.append(_field(T["label_SEAT"], seat_label or T["free_seating"], seat=bool(seat_label)))
+    if location_name or location_address:
+        fields.append(_field(T["label_LOCATION"], location_name or location_address,
+                             location_address if location_name else ""))
+    grid_rows = []
+    for i in range(0, len(fields), 2):
+        left = fields[i]
+        right = fields[i + 1] if i + 1 < len(fields) else ""
+        grid_rows.append(
             "<tr>"
-            f'<td style="padding:11px 0;{border}font-family:Arial,Helvetica,sans-serif;'
-            "font-size:11px;font-weight:bold;letter-spacing:1px;color:#6B6B63;"
-            'text-transform:uppercase;vertical-align:middle;width:30%;">'
-            f"{label}</td>"
-            f'<td style="padding:11px 0;{border}font-family:Arial,Helvetica,sans-serif;'
-            'font-size:15px;font-weight:bold;color:#141414;vertical-align:middle;">'
-            f"{value}</td>"
+            f'<td class="col" width="50%" valign="top" style="padding:0 12px 20px 0;">{left}</td>'
+            f'<td class="col" width="50%" valign="top" style="padding:0 0 20px 12px;">{right}</td>'
             "</tr>"
         )
+    grid = ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+            f'style="border-collapse:collapse;">{"".join(grid_rows)}</table>')
 
-    def _seat_pill(v: str) -> str:
-        # Coral rounded pill so the reserved seat pops (matches the web stub).
-        return (
-            '<span style="display:inline-block;padding:4px 12px;border-radius:999px;'
-            "background:#F7E4DF;color:#C73D20;font-family:Arial,Helvetica,sans-serif;"
-            f'font-weight:bold;font-size:14px;">&#127903; {v}</span>'
-        )
+    chip_col, chip_txt = ((MAIL_SUCCESS, T["chip_paid"]) if status == "paid"
+                          else (MAIL_WARNING, T["chip_unpaid"]))
+    chip = (f'<span style="display:inline-block;padding:5px 10px 5px 9px;border:1px solid {chip_col};'
+            f'border-radius:6px;{mono}font-size:10px;font-weight:500;letter-spacing:1.4px;'
+            f'text-transform:uppercase;color:{MAIL_TEXT};">'
+            f'<span style="color:{chip_col};">&#9679;</span>&nbsp; {chip_txt}</span>')
 
-    info: list = []
-    if full_name:
-        info.append((T["label_NAME"], full_name))
-    if date_val:
-        info.append((T["label_DATE"], date_val))
-        if date_val != "Unlimited" and event_time:
-            info.append((T["label_TIME"], event_time))
-    if seat_label:
-        info.append((T["label_SEAT"], seat_label))
-    if location_name:
-        info.append((T["label_LOCATION"], location_name))
-    if location_address:
-        info.append((T["label_ADDRESS"], location_address))
-    rows_html = "".join(
-        _row(lbl, (_seat_pill(val) if lbl == "SEAT" else val), last=(i == len(info) - 1))
-        for i, (lbl, val) in enumerate(info)
+    banner_html = (
+        '<tr><td style="padding:0;line-height:0;font-size:0;">'
+        f'<img src="cid:banner" width="600" alt="{event_name}" '
+        'style="display:block;width:100%;max-width:600px;height:auto;border:0;'
+        'border-radius:8px 8px 0 0;"></td></tr>'
+        if has_banner else ""
     )
-    info_table = (
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-        'style="margin:0 0 28px 0;border-collapse:collapse;">'
-        f"{rows_html}</table>"
-        if rows_html
-        else ""
-    )
-
     subtitle_html = (
-        f'<div style="margin-top:6px;font-family:Arial,Helvetica,sans-serif;'
-        f'font-size:13px;color:#FFD8CF;">{subtitle}</div>'
-        if subtitle
-        else ""
+        f'<div style="{mono}font-size:13px;line-height:1.5;color:{MAIL_MUTED};margin-top:6px;">'
+        f'{subtitle}</div>' if subtitle else ""
     )
-
-    # Optional self-service cancellation link (buyer can cancel + get refunded
-    # from the email, up to the deadline enforced server-side).
+    notes = "".join(
+        '<tr>'
+        f'<td width="30" valign="top" style="{mono}font-size:12px;line-height:1.55;'
+        f'font-weight:500;color:{MAIL_CORAL_TEXT};padding:0 0 8px 0;">{i + 1:02d}</td>'
+        f'<td valign="top" style="{mono}font-size:12px;line-height:1.55;color:{MAIL_MUTED};'
+        f'padding:0 0 8px 0;">{n}</td></tr>'
+        for i, n in enumerate(T["notes"])
+    )
     cancel_html = (
-        '<tr><td style="padding:0 36px 24px 36px;">'
-        '<p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12.5px;'
-        f'line-height:1.6;color:#6B6B63;">{T["email_cancel_pre"]}'
-        f'<a href="{cancel_url}" style="color:#C73D20;font-weight:bold;text-decoration:underline;">'
-        f'{T["email_cancel_link"]}</a>{T["email_cancel_post"]}</p></td></tr>'
-        if cancel_url
-        else ""
+        f'<p style="margin:14px 0 0 0;{mono}font-size:12px;line-height:1.6;color:{MAIL_MUTED};">'
+        f'{T["email_cancel_pre"]}<a href="{cancel_url}" style="color:{MAIL_CORAL_TEXT};'
+        f'font-weight:600;text-decoration:underline;">{T["email_cancel_link"]}</a>'
+        f'{T["email_cancel_post"]}</p>'
+        if cancel_url else ""
     )
+    contact_html = (
+        f'{T["contact"]} <a href="mailto:{contact}" style="color:{MAIL_MUTED};'
+        f'text-decoration:underline;">{contact}</a>' if contact else ""
+    )
+    preheader = " · ".join(x for x in (title or event_name, date_val, event_time, tid) if x)
+    # One perforation notch: a canvas-coloured disc centred on the card edge,
+    # so it reads as a bite out of the card (clients that drop the negative
+    # margin just show a dot on the dashed line).
+    notch = (f'<div style="width:18px;height:18px;border-radius:50%;background-color:{MAIL_CANVAS};'
+             f'margin-{{side}}:-10px;"></div>')
 
     return f"""\
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{lang}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light">
-  <title>{event_name} · Ticket</title>
+  <meta name="supported-color-schemes" content="light">
+  <title>{event_name} · Ticket {tid}</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Syne:wght@800&amp;display=swap" rel="stylesheet">
+  <style>
+    :root {{ color-scheme: light; supported-color-schemes: light; }}
+    body {{ margin:0; padding:0; background-color:{MAIL_CANVAS}; }}
+    a {{ color:{MAIL_CORAL_TEXT}; }}
+    @media (max-width: 620px) {{
+      .wrap {{ width:100% !important; }}
+      .pad {{ padding-left:22px !important; padding-right:22px !important; }}
+      .col {{ display:block !important; width:100% !important; padding:0 0 18px 0 !important; }}
+    }}
+  </style>
 </head>
-<body style="margin:0;padding:0;background-color:#F2EFE6;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F2EFE6;margin:0;padding:0;">
+<body style="margin:0;padding:0;background-color:{MAIL_CANVAS};">
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:{MAIL_CANVAS};">{preheader}</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:{MAIL_CANVAS};">
     <tr>
-      <td align="center" style="padding:28px 12px;">
-        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;background-color:#FFFFFF;border:1px solid #DCD8CB;border-radius:14px;overflow:hidden;">
+      <td align="center" style="padding:28px 12px 36px 12px;">
+        <table role="presentation" class="wrap" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;">
 
-          <!-- coral header band (gradient, with solid fallback for Outlook) -->
+          <!-- header: organiser wordmark + // E-TICKET -->
           <tr>
-            <td style="background-color:#C73D20;background-image:linear-gradient(135deg,#C73D20,#8F2B16);padding:34px 36px;">
-              <div style="font-family:'Courier New',Courier,monospace;font-size:12px;font-weight:bold;letter-spacing:3px;color:#FFD8CF;">// TICKET</div>
-              <div style="margin-top:8px;font-family:Arial,Helvetica,sans-serif;font-size:28px;font-weight:bold;line-height:1.15;color:#FFFFFF;">{event_name}</div>
-              {subtitle_html}
+            <td style="padding:0 4px 16px 4px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+                <td valign="middle" style="font-family:{MAIL_WORDMARK};font-size:18px;font-weight:800;letter-spacing:-0.2px;text-transform:uppercase;color:{MAIL_TEXT};">{event_name}</td>
+                <td valign="middle" align="right" style="{mono}font-size:10px;font-weight:500;letter-spacing:1.4px;text-transform:uppercase;color:{MAIL_MUTED};white-space:nowrap;"><span style="color:{MAIL_CORAL_TEXT};">//</span>&nbsp; {T["eticket"]}</td>
+              </tr></table>
             </td>
           </tr>
 
-          <!-- perforation seam: dashed line with two notch "ears" clipped by the
-               card's rounded overflow (the classic ticket-stub cut). Cells are
-               vertically centred so the half-circles sit ON the dashed line: the
-               26px ears set the row height and the height-0 dashed div lands at
-               its vertical middle, level with the circle centres. -->
+          <!-- the ticket card -->
           <tr>
-            <td style="padding:0;line-height:0;font-size:0;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+            <td style="background-color:{MAIL_SURFACE};border:1px solid {MAIL_LINE};border-radius:8px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;">
+                {banner_html}
+
+                <!-- status -->
                 <tr>
-                  <td width="13" valign="middle" style="line-height:0;font-size:0;">
-                    <div style="width:26px;height:26px;margin-left:-13px;border-radius:50%;background-color:#F2EFE6;"></div>
+                  <td class="pad" style="padding:28px 32px 24px 32px;border-bottom:1px solid {MAIL_LINE_SOFT};">
+                    {chip}
+                    <h1 style="margin:16px 0 8px 0;{mono}font-size:22px;font-weight:600;line-height:1.3;color:{MAIL_TEXT};">{headline}</h1>
+                    <p style="margin:0;{mono}font-size:13px;line-height:1.6;color:{MAIL_MUTED};">{status_msg}</p>
                   </td>
-                  <td valign="middle" style="line-height:0;font-size:0;">
-                    <div style="border-top:2px dashed #A6A192;height:0;line-height:0;font-size:0;">&nbsp;</div>
+                </tr>
+
+                <!-- event + details -->
+                <tr>
+                  <td class="pad" style="padding:24px 32px 6px 32px;">
+                    <div style="{mono}font-size:10px;font-weight:500;letter-spacing:1.4px;text-transform:uppercase;color:{MAIL_MUTED};"><span style="color:{MAIL_CORAL_TEXT};">//</span>&nbsp; {T["kicker"]}</div>
+                    <div style="margin-top:10px;{mono}font-size:19px;font-weight:600;line-height:1.3;color:{MAIL_TEXT};">{title or event_name}</div>
+                    {subtitle_html}
+                    <div style="height:22px;line-height:22px;font-size:0;">&nbsp;</div>
+                    {grid}
                   </td>
-                  <td width="13" valign="middle" align="right" style="line-height:0;font-size:0;">
-                    <div style="width:26px;height:26px;margin-right:-13px;border-radius:50%;background-color:#F2EFE6;"></div>
+                </tr>
+
+                <!-- perforation -->
+                <tr>
+                  <td style="padding:0;line-height:0;font-size:0;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                      <tr>
+                        <td width="10" valign="middle" style="line-height:0;font-size:0;">{notch.replace("{side}", "left")}</td>
+                        <td valign="middle" style="line-height:0;font-size:0;padding:0 8px;"><div style="border-top:1px dashed #BFC3C7;height:0;line-height:0;font-size:0;">&nbsp;</div></td>
+                        <td width="10" valign="middle" align="right" style="line-height:0;font-size:0;">{notch.replace("{side}", "right")}</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- stub: QR + ticket number -->
+                <tr>
+                  <td align="center" class="pad" style="padding:26px 32px 8px 32px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" style="border:1px solid {MAIL_LINE};border-radius:8px;background-color:#FFFFFF;">
+                      <tr><td style="padding:14px;">
+                        <img src="cid:qrcode" alt="QR {tid}" width="196" height="196" style="display:block;width:196px;height:196px;border:0;">
+                      </td></tr>
+                    </table>
+                    <div style="margin:16px 0 2px 0;">{_label(T["tid"])}</div>
+                    <div style="{mono}font-size:20px;font-weight:600;letter-spacing:0.5px;color:{MAIL_TEXT};">{tid}</div>
+                    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px auto 0 auto;"><tr>
+                      <td style="border:1px solid rgba(0,0,0,0.22);border-color:#C8CCD0;border-radius:6px;">
+                        <a href="{pdf_url}" style="display:inline-block;padding:10px 16px;{mono}font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:{MAIL_TEXT};text-decoration:none;">{T["open_pdf"]}&nbsp; &#8599;</a>
+                      </td>
+                    </tr></table>
+                  </td>
+                </tr>
+
+                <!-- how it works -->
+                <tr>
+                  <td class="pad" style="padding:22px 32px 28px 32px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid {MAIL_LINE_SOFT};">
+                      <tr><td colspan="2" style="height:18px;line-height:18px;font-size:0;">&nbsp;</td></tr>
+                      {notes}
+                    </table>
+                    <p style="margin:6px 0 0 0;{mono}font-size:12px;line-height:1.6;color:{MAIL_MUTED};">{T["pdf_attached"]}</p>
+                    {cancel_html}
                   </td>
                 </tr>
               </table>
             </td>
           </tr>
 
-          <!-- body -->
-          <tr>
-            <td style="padding:32px 36px 8px 36px;">
-              <h1 style="margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;font-size:21px;font-weight:bold;color:#141414;">{headline}</h1>
-              <p style="margin:0 0 26px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#6B6B63;">{status_msg}</p>
-              {info_table}
-            </td>
-          </tr>
-
-          <!-- QR -->
-          <tr>
-            <td align="center" style="padding:0 36px 8px 36px;">
-              <table role="presentation" cellpadding="0" cellspacing="0" style="border:1px solid #DCD8CB;border-radius:12px;background-color:#FFFFFF;">
-                <tr><td style="padding:18px;">
-                  <img src="cid:qrcode" alt="Ticket QR code" width="200" height="200" style="display:block;width:200px;height:200px;">
-                </td></tr>
-              </table>
-              <div style="margin:14px 0 4px 0;font-family:'Courier New',Courier,monospace;font-size:16px;font-weight:bold;letter-spacing:1px;color:#141414;">
-                <a href="{qr_url}" style="color:#141414;text-decoration:none;">{tid}</a>
-              </div>
-            </td>
-          </tr>
-
-          <!-- usage note -->
-          <tr>
-            <td style="padding:22px 36px 8px 36px;">
-              <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12.5px;line-height:1.6;color:#6B6B63;">
-                {T["email_usage"]}
-              </p>
-            </td>
-          </tr>
-
-          {cancel_html}
-
           <!-- footer -->
           <tr>
-            <td style="padding:18px 36px 28px 36px;border-top:1px solid #DCD8CB;">
-              <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#6B6B63;">{T["footer"]}</div>
+            <td style="padding:18px 4px 0 4px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+                <td valign="top" style="{mono}font-size:11px;line-height:1.6;color:{MAIL_FAINT};"><span style="color:{MAIL_TEXT};font-weight:600;">[&gt;<span style="color:{MAIL_CORAL_TEXT};">|</span>]</span>&nbsp; {T["footer"]}</td>
+                <td valign="top" align="right" style="{mono}font-size:11px;line-height:1.6;color:{MAIL_FAINT};">{contact_html}</td>
+              </tr></table>
             </td>
           </tr>
 
@@ -1162,8 +828,9 @@ async def send_email(
     lang: Optional[str] = None,
 ):
     """
-    Sends an email with the ticket PDF attached.
-    Automatically generates the PDF if needed.
+    Email one ticket: the branded HTML body with the QR inline, the ticket PDF
+    attached. The PDF is rendered fresh from the stored ticket, so it matches
+    the email (paid state, name, seat).
 
     seat_label / lang: when None they are looked up from the stored ticket, so
     the seat is shown and the email + PDF use the buyer's language.
@@ -1178,54 +845,34 @@ async def send_email(
         logger.error(f"Refusing to send email to invalid address: {email!r}")
         return
 
-    # Resolve seat + language once: fall back to the stored ticket so both the
-    # PDF and the email body show the seat and localize, whatever the caller passed.
-    if seat_label is None or lang is None:
-        try:
-            _t = load_ticket_id(tid) or {}
-        except Exception:
-            _t = {}
-        if seat_label is None:
-            seat_label = _t.get("seat_label") or ""
-        if lang is None:
-            lang = _t.get("lang") or "en"
+    try:
+        stored = load_ticket_id(tid)
+    except Exception:
+        stored = None
+    if seat_label is None:
+        seat_label = (stored or {}).get("seat_label") or ""
+    if lang is None:
+        lang = (stored or {}).get("lang") or "en"
     T = _tx(lang)
 
-    pdf_path = f"./codes/{tid}.pdf"
-    if not os.path.exists(pdf_path):
-        generate_ticket_pdf(
-            tid, first_name, last_name, date, event_time,
-            seat_label=seat_label, lang=lang,
-        )
-
-    message = MIMEMultipart("mixed")
-    message["From"] = config.Mail.smtp_user
-    message["To"] = email
-
     show_data = load_show()
+    view = ticket_view(
+        tid, ticket=stored, show_data=show_data,
+        first_name=first_name, last_name=last_name, date=date,
+        event_time=event_time, seat_label=seat_label, lang=lang, paid=paid,
+    )
+    # An explicit seat/lang from the caller wins over the stored ticket.
+    view["seat"] = str(seat_label).strip() if _meaningful(seat_label) else view["seat"]
+    view["lang"] = str(lang)
+    pdf_bytes = await asyncio.to_thread(ticket_pdf.render_pdf, [view], "standard")
 
-    # --- shared, escaped values for the branded template ---
-    fn = str(first_name).strip() if _meaningful(first_name) else ""
-    ln = str(last_name).strip() if _meaningful(last_name) else ""
-    full_name = escape(f"{fn} {ln}".strip())
-    date_val = escape(_fmt_ticket_date(date)) if date else ""
-    event_name = escape(str(show_data.get("orga_name", "Event")))
-    subtitle = escape(
-        str(show_data.get("subtitle") or show_data.get("title") or "").strip()
-    )
-    event_time_e = escape(str(event_time)) if event_time else ""
-    loc_name, loc_addr = _location_for_date(date, show_data)
-    location_name = escape(loc_name) if loc_name else ""
-    location_address = escape(loc_addr) if loc_addr else ""
-    seat_label_e = escape(str(seat_label)) if _meaningful(seat_label) else ""
-    safe_tid = escape(str(tid))
-    # The tid under the QR links to the ticket PDF. The per-ticket HMAC token
-    # lets the (otherwise public) /codes/pdf endpoint accept this legitimate
-    # request while still rejecting tid enumeration.
-    qr_url = (
-        f"{config.API.backend_url}/codes/pdf?tid={tid}"
-        f"&token={ticket_token(tid)}"
-    )
+    status = "paid" if (paid or type != "normal") else "unpaid"
+    event_raw = str(show_data.get("orga_name") or "Event")
+    title_raw = str(show_data.get("title") or "").strip()
+    date_long = ticket_pdf.long_date(date, lang) if date else ""
+    time_long = (ticket_pdf.long_time(event_time, lang)
+                 if event_time and date and date != "Unlimited" else "")
+
     # Self-service cancel link → the PHP frontend page, which POSTs to the
     # token-gated /api/ticket/self-cancel. Only offered for real dated tickets
     # (a dateless admin/vip ticket has no online cancellation). The public app
@@ -1246,58 +893,68 @@ async def send_email(
             cancel_url = (
                 f"{frontend_base}/cancel.php?tid={tid}&token={ticket_token(tid)}"
             )
+    # The PDF link carries the per-ticket HMAC token, which lets the otherwise
+    # public /codes/pdf endpoint accept it while still rejecting enumeration.
+    pdf_url = f"{config.API.backend_url}/codes/pdf?tid={tid}&token={ticket_token(tid)}"
 
     if type != "normal":
-        message["Subject"] = (config.Mail.mail_title_paid).format(id=str(first_name))
-        headline = T["email_head_paid"]
-        status_msg = T["email_status_paid_onsite"]
+        subject = T["subject_paid"]
+        headline, status_msg = T["email_head_paid"], T["email_status_paid_onsite"]
+    elif paid:
+        subject = T["subject_ready"]
+        headline, status_msg = T["email_head_ready"], T["email_status_ready"]
     else:
-        message["Subject"] = (config.Mail.mail_title).format(id=str(first_name))
-        if paid:
-            headline = T["email_head_ready"]
-            status_msg = T["email_status_ready"]
-        else:
-            headline = T["email_head_ticket"]
-            status_msg = T["email_status_unpaid"]
+        subject = T["subject_unpaid"]
+        headline, status_msg = T["email_head_ticket"], T["email_status_unpaid"]
+    subject = subject.format(event=title_raw or event_raw,
+                             date=_fmt_ticket_date(date) if date else "").rstrip(", ")
+
+    banner = await asyncio.to_thread(ticket_pdf.banner_jpeg, MAIL_BANNER_ASPECT, 1200)
 
     html_content = _ticket_email_html(
-        event_name=event_name,
-        subtitle=subtitle,
-        headline=headline,
-        status_msg=status_msg,
-        full_name=full_name,
-        date_val=date_val,
-        event_time=event_time_e,
-        location_name=location_name,
-        location_address=location_address,
-        tid=safe_tid,
-        qr_url=qr_url,
-        cancel_url=cancel_url,
-        seat_label=seat_label_e,
-        lang=lang,
+        event_name=escape(event_raw),
+        title=escape(title_raw),
+        subtitle=escape(str(show_data.get("subtitle") or "").strip()),
+        headline=escape(headline),
+        status_msg=escape(status_msg),
+        status=status,
+        full_name=escape(view["name"]),
+        date_val=escape(date_long),
+        event_time=escape(time_long),
+        location_name=escape(view["venue"]),
+        location_address=escape(view["address"]),
+        tid=escape(str(tid)),
+        pdf_url=escape(pdf_url),
+        cancel_url=escape(cancel_url),
+        seat_label=escape(view["seat"]),
+        contact=escape(view["contact"]),
+        has_banner=bool(banner),
+        lang=view["lang"] if view["lang"] in TICKET_I18N else "en",
     )
 
-    # Embed the QR as an inline (cid) image instead of a remote <img src> URL.
-    # A remote URL pointing at config.API.backend_url is often not publicly
-    # reachable, and most mail clients block remote images by default — a cid
-    # image lives in a multipart/related part next to the HTML and always
-    # renders offline. The PNG is rendered in memory; nothing is read from disk.
-    related = MIMEMultipart("related")
-    related.attach(MIMEText(html_content, "html"))
+    message = MIMEMultipart("mixed")
+    message["From"] = config.Mail.smtp_user
+    message["To"] = email
+    message["Subject"] = subject
 
+    # Images go inline (cid) instead of remote URLs: the backend is often not
+    # publicly reachable and most clients block remote images by default.
+    related = MIMEMultipart("related")
+    related.attach(MIMEText(html_content, "html", "utf-8"))
     qr_img = MIMEImage(_qr_png_bytes(tid), _subtype="png")
     qr_img.add_header("Content-ID", "<qrcode>")
     qr_img.add_header("Content-Disposition", "inline", filename=f"{tid}.png")
     related.attach(qr_img)
-
+    if banner:
+        b_img = MIMEImage(banner, _subtype="jpeg")
+        b_img.add_header("Content-ID", "<banner>")
+        b_img.add_header("Content-Disposition", "inline", filename="banner.jpg")
+        related.attach(b_img)
     message.attach(related)
 
-    with open(pdf_path, "rb") as pdf_file:
-        part = MIMEApplication(pdf_file.read(), Name=os.path.basename(pdf_path))
-        part["Content-Disposition"] = (
-            f'attachment; filename="{os.path.basename(pdf_path)}"'
-        )
-        message.attach(part)
+    part = MIMEApplication(pdf_bytes, _subtype="pdf")
+    part.add_header("Content-Disposition", "attachment", filename=f"Ticket-{tid}.pdf")
+    message.attach(part)
 
     # The whole SMTP handshake (connect/STARTTLS/login/sendmail) is blocking
     # and can take seconds against a slow server; running it directly in this
@@ -1442,10 +1099,10 @@ def view_ticket(app=quart.Quart):
                 _token_valid(t, tok) for t, tok in zip(tids, tokens)
             ):
                 return quart.jsonify({"error": "Forbidden"}), 403
-            buf = build_combined_simple_pdf(tids)
-            if buf is None:
+            pdf = await asyncio.to_thread(render_ticket_pdf, tids, "simple")
+            if pdf is None:
                 return quart.jsonify({"error": "PDF not found"}), 404
-            return quart.Response(buf.getvalue(), mimetype="application/pdf")
+            return quart.Response(pdf, mimetype="application/pdf")
 
         tid = quart.request.args.get("tid")
         if not tid:
@@ -1453,12 +1110,15 @@ def view_ticket(app=quart.Quart):
         # Require a valid per-ticket HMAC token (see ticket_token).
         if not _token_valid(tid, quart.request.args.get("token")):
             return quart.jsonify({"error": "Forbidden"}), 403
-        # Prevent path traversal: only serve files inside ./codes
-        pdf_path = safe_join("./codes", f"{tid}.pdf")
-        if pdf_path is not None and os.path.isfile(pdf_path):
-            return await quart.send_file(pdf_path, mimetype="application/pdf")
-        else:
+        # Rendered from the stored ticket on every request, so the PDF always
+        # shows the current state (paid, name, seat, cancelled).
+        pdf = await asyncio.to_thread(render_ticket_pdf, [tid], "standard")
+        if pdf is None:
             return quart.jsonify({"error": "PDF not found"}), 404
+        return quart.Response(pdf, mimetype="application/pdf", headers={
+            "Content-Disposition": f'inline; filename="Ticket-{tid}.pdf"',
+            "Cache-Control": "no-store",
+        })
 
 
 def _stripe_refund(payment_intent: str) -> Dict[str, Any]:
