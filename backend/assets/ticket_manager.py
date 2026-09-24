@@ -1673,20 +1673,13 @@ def get_available_tickets(app=quart.Quart):
             return quart.jsonify({"status": "error", "message": str(e)}), 500
 
 
-def generate_ticket_id(valid_date):
-    date_parts = str(valid_date or "").split("-")
-    if len(date_parts) == 3 and all(date_parts):
-        year, month, day = date_parts[0], date_parts[1], date_parts[2]
-    else:
-        # Dateless tickets (admin/vip -> "Unlimited") have no YYYY-MM-DD to
-        # derive the prefix from; fall back to today's local date so the ID
-        # keeps the YYYY-DDMM-XXXX format and stays unique.
-        today = local_now().date()
-        year, month, day = f"{today.year:04d}", f"{today.month:02d}", f"{today.day:02d}"
-
-    letters = string.ascii_uppercase
-    digits = string.digits
-    random_part = "".join(random.choice(letters + digits) for _ in range(4))
-
-    ticket_id = f"{year}-{day}{month}-{random_part}"
-    return ticket_id
+def generate_ticket_id(valid_date=None):
+    """A fully random ticket id, XXXX-XXXX-XXXX (uppercase letters + digits).
+    No longer date-derived: with the register scanner, staff scan a QR
+    instead of typing an id at speed, so there is nothing left for the date
+    prefix to make faster to read or type, and a random id can't be guessed
+    from a date. `valid_date` is accepted (unused) so existing callers don't
+    need to change."""
+    alphabet = string.ascii_uppercase + string.digits
+    groups = ["".join(random.choice(alphabet) for _ in range(4)) for _ in range(3)]
+    return "-".join(groups)
