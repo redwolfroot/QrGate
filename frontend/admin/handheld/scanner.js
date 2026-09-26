@@ -480,7 +480,7 @@
       "</button>" +
       '<button type="button" class="hh-live is-stale" id="hhLive" aria-haspopup="dialog">' +
         '<span class="hh-live__count"><b id="hhLiveIn">&ndash;</b><span class="hh-live__sep">/</span><span id="hhLiveSold">&ndash;</span></span>' +
-        '<span class="hh-live__lbl" id="hhLiveLbl">drin</span>' +
+        '<span class="hh-live__lbl" id="hhLiveLbl">eingelassen</span>' +
         '<span class="hh-live__dev" id="hhLiveDev"></span>' +
       "</button>";
     bar.parentNode.insertBefore(wrap, bar.nextSibling);
@@ -576,7 +576,7 @@
       $("hhLiveLbl").textContent = "kein Termin heute";
     } else {
       liveCounts(d);
-      $("hhLiveLbl").textContent = "drin";
+      $("hhLiveLbl").textContent = "eingelassen";
     }
     castRender(d.broadcast);
     var n = (d.scanners || []).length;

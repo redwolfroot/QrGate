@@ -4,7 +4,8 @@ network fail.
 
 One A4 portrait list per date: active tickets sorted by last name, then first
 name, with the ticket number in large monospace (to type it in by hand), the
-category (VIP and admin marked), seat, status and an empty box to tick. Unpaid
+category (VIP and admin marked), seat, status (admission time once scanned)
+and an empty box to tick. Unpaid
 tickets are set in bold and marked OFFEN, they still have to pay at the box
 office. Cancelled tickets are left out. Tickets without a date (admin/VIP,
 "Unlimited") follow in their own section at the end.
@@ -34,8 +35,8 @@ PAGE_W, PAGE_H = A4
 MARGIN = 14 * mm
 TOP = 24 * mm  # room for the running header
 COLS = [  # (header, width)
-    ("Nachname", 40 * mm), ("Vorname", 32 * mm), ("Ticket-Nr.", 37 * mm),
-    ("Kategorie", 22 * mm), ("Platz", 22 * mm), ("Status", 21 * mm), ("", 8 * mm),
+    ("Nachname", 40 * mm), ("Vorname", 30 * mm), ("Ticket-Nr.", 37 * mm),
+    ("Kategorie", 20 * mm), ("Platz", 22 * mm), ("Status", 25 * mm), ("", 8 * mm),
 ]
 
 
@@ -78,7 +79,7 @@ def _p(text: Any, style: ParagraphStyle) -> Paragraph:
 
 def _admitted_at(raw: Optional[str]) -> str:
     m = re.search(r"(\d{2}):(\d{2})", str(raw or "")[10:])
-    return f"drin {m[1]}:{m[2]}" if m else "drin"
+    return f"Einlass {m[1]}:{m[2]}" if m else "eingelassen"
 
 
 def _row(t: Dict, st: Dict[str, ParagraphStyle]) -> list:

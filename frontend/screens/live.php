@@ -131,7 +131,7 @@ $extraHead = '';
     .lv-ring .lv-ring__fg { stroke: var(--avo-success); stroke-linecap: round; transition: stroke-dashoffset .6s ease; }
     .lv-ring__num { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
     .lv-ring__big { font-family: var(--avo-font-display); font-weight: 800; font-size: clamp(2.4rem, 6.5vw, 8rem); line-height: 1; font-variant-numeric: tabular-nums; }
-    .lv-ring__of { font-family: var(--avo-font-mono); font-size: clamp(.9rem, 1.6vw, 1.8rem); color: var(--avo-text-muted); margin-top: .3em; }
+    .lv-ring__of { font-family: var(--avo-font-mono); font-size: clamp(.9rem, 1.6vw, 1.8rem); color: var(--avo-text-muted); margin-top: .3em; white-space: pre-line; line-height: 1.25; }
     .lv-ring__sub { font-size: clamp(.85rem, 1.2vw, 1.3rem); color: var(--avo-text-muted); }
 
     /* announcement */
@@ -272,7 +272,7 @@ $extraHead = '';
         // door ring
         var sold = d.sold || 0, inn = d.checked_in || 0;
         $('lvIn').textContent = d.event_today === false && !sold ? '–' : num(inn);
-        $('lvOf').textContent = d.event_today === false && !sold ? 'kein Termin heute' : 'von ' + num(sold) + ' drin';
+        $('lvOf').textContent = d.event_today === false && !sold ? 'kein Termin heute' : 'von ' + num(sold) + '\neingelassen';
         var pct = sold ? Math.min(1, inn / sold) : 0;
         $('lvRingFg').style.strokeDashoffset = String(326.73 * (1 - pct));
         $('lvPending').textContent = sold ? Math.round(pct * 100) + ' % · ' + num(d.pending) + ' fehlen noch' : ' ';
