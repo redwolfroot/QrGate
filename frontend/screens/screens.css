@@ -1,0 +1,147 @@
+/* ==========================================================================
+   QrGate · foyer screens — one frame for every display.
+   Built for a TV or projector at 16:9, from 720p to 4K: every size is tied to
+   the viewport (vmin/vw), nothing scrolls. Dark only. Plex Mono for text,
+   Syne for the big titles (the kit's wordmark face), coral as the accent.
+   ========================================================================== */
+
+html, body { height: 100%; margin: 0; }
+body.scr-body {
+  overflow: hidden;
+  background: #070708;
+  color: var(--avo-text);
+  font-family: var(--avo-font-mono);
+  -webkit-font-smoothing: antialiased;
+  cursor: none;                       /* a mouse left on a kiosk stays hidden */
+}
+
+.scr {
+  --u: 1vmin;                         /* the unit everything scales with */
+  --gap: calc(var(--u) * 4.5);
+  --coral: var(--avo-primary, #FF6B4A);
+  --muted: color-mix(in oklab, var(--avo-text) 62%, transparent);
+  --faint: color-mix(in oklab, var(--avo-text) 14%, transparent);
+  position: fixed; inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  padding: calc(var(--u) * 4.5) calc(var(--u) * 6);
+  box-sizing: border-box;
+  isolation: isolate;
+}
+
+/* ---- background: wallpaper, darkened, with a coral glow and a fine grid --- */
+.scr-bg, .scr-bg::before, .scr-bg::after { position: absolute; inset: 0; z-index: -1; }
+.scr-bg {
+  background: #070708 center / cover no-repeat;
+  background-image: var(--scr-wall, none);
+  filter: saturate(.85);
+  transform: scale(1.04);
+  animation: scrDrift 40s ease-in-out infinite alternate;
+}
+.scr-bg::before {
+  content: "";
+  background:
+    radial-gradient(ellipse 70% 60% at 12% 0%, color-mix(in oklab, var(--coral) 28%, transparent), transparent 70%),
+    radial-gradient(ellipse 60% 50% at 100% 100%, color-mix(in oklab, var(--coral) 12%, transparent), transparent 70%),
+    linear-gradient(180deg, rgba(7,7,8,.72) 0%, rgba(7,7,8,.86) 55%, rgba(7,7,8,.96) 100%);
+}
+.scr-bg::after {
+  content: "";
+  background-image:
+    linear-gradient(to right, rgba(255,255,255,.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,.035) 1px, transparent 1px);
+  background-size: calc(var(--u) * 8) calc(var(--u) * 8);
+  mask-image: radial-gradient(ellipse at center, #000 30%, transparent 85%);
+}
+@keyframes scrDrift { to { transform: scale(1.1) translate(-1%, -1%); } }
+
+/* ---- top bar ---------------------------------------------------------------- */
+.scr-top { display: flex; align-items: center; gap: calc(var(--u) * 2.4); min-width: 0; }
+.scr-logo {
+  width: calc(var(--u) * 7.5); height: calc(var(--u) * 7.5); flex-shrink: 0;
+  border-radius: calc(var(--u) * 1.4); object-fit: cover;
+  background: rgba(255,255,255,.06); box-shadow: 0 0 0 1px var(--faint);
+}
+.scr-logo[hidden] { display: none; }
+.scr-org { display: flex; flex-direction: column; gap: calc(var(--u) * .5); min-width: 0; }
+.scr-kicker {
+  font-size: calc(var(--u) * 1.55); font-weight: 600; letter-spacing: .22em; text-transform: uppercase;
+  color: var(--coral); white-space: nowrap;
+}
+.scr-kicker::before { content: "// "; opacity: .7; }
+.scr-org__name {
+  font-size: calc(var(--u) * 2.6); font-weight: 600; line-height: 1.1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.scr-sp { flex: 1; }
+.scr-clock { text-align: right; font-variant-numeric: tabular-nums; }
+.scr-clock b { display: block; font-size: calc(var(--u) * 5); font-weight: 500; line-height: 1; letter-spacing: .02em; }
+.scr-clock span { display: block; margin-top: calc(var(--u) * .8); font-size: calc(var(--u) * 1.55); color: var(--muted); letter-spacing: .14em; text-transform: uppercase; }
+
+/* ---- stage -------------------------------------------------------------- */
+.scr-stage { position: relative; min-height: 0; display: grid; transition: opacity .6s ease; }
+.scr-stage.is-fading { opacity: 0; }
+.scr-slide {
+  grid-area: 1 / 1; min-height: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+  opacity: 0; visibility: hidden; transform: translateY(calc(var(--u) * 2));
+  transition: opacity .9s ease, transform .9s cubic-bezier(.2,.8,.2,1), visibility 0s linear .9s;
+}
+.scr-slide.is-on { opacity: 1; visibility: visible; transform: none; transition: opacity .9s ease .2s, transform .9s cubic-bezier(.2,.8,.2,1) .2s; }
+
+.scr-icon {
+  display: grid; place-items: center;
+  width: calc(var(--u) * 14); height: calc(var(--u) * 14); margin-bottom: calc(var(--u) * 4.5);
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--coral) 14%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--coral) 40%, transparent), 0 0 calc(var(--u) * 10) color-mix(in oklab, var(--coral) 25%, transparent);
+  color: var(--coral); font-size: calc(var(--u) * 6);
+}
+.scr-text {
+  margin: 0; max-width: 22ch;
+  font-family: var(--avo-font-mono); font-weight: 600; line-height: 1.12; letter-spacing: -.01em;
+  font-size: calc(var(--u) * 8.4); text-wrap: balance;
+}
+.scr-text.is-m { font-size: calc(var(--u) * 6.4); max-width: 26ch; }
+.scr-text.is-s { font-size: calc(var(--u) * 4.8); max-width: 34ch; line-height: 1.22; }
+.scr-text .hl { color: var(--coral); }
+.scr-text .sub { display: block; margin-top: calc(var(--u) * 1.5); font-size: .5em; font-weight: 500; color: var(--muted); }
+
+.scr-title {
+  margin: 0; font-family: 'Syne', var(--avo-font-display); font-weight: 800;
+  font-size: calc(var(--u) * 13); line-height: .95; letter-spacing: -.02em; text-wrap: balance;
+}
+.scr-title.is-m { font-size: calc(var(--u) * 10); }
+.scr-title.is-s { font-size: calc(var(--u) * 7.5); }
+
+/* ---- bottom bar ----------------------------------------------------------- */
+.scr-foot { display: flex; align-items: center; gap: calc(var(--u) * 3); }
+.scr-lang { display: flex; gap: calc(var(--u) * 1); }
+.scr-lang span {
+  font-size: calc(var(--u) * 1.6); font-weight: 600; letter-spacing: .16em;
+  padding: calc(var(--u) * .5) calc(var(--u) * 1.1); border-radius: 999px;
+  color: var(--muted); box-shadow: inset 0 0 0 1px var(--faint);
+  transition: color .4s, background .4s, box-shadow .4s;
+}
+.scr-lang span.is-on { color: #111; background: var(--coral); box-shadow: none; }
+.scr-progress { flex: 1; display: flex; gap: calc(var(--u) * .8); }
+.scr-progress i { flex: 1; height: calc(var(--u) * .45); border-radius: 99px; background: var(--faint); overflow: hidden; }
+.scr-progress i::after { content: ""; display: block; height: 100%; width: 100%; background: var(--coral); transform: scaleX(0); transform-origin: left; }
+.scr-progress i.is-done::after { transform: scaleX(1); }
+.scr-progress i.is-run::after { animation: scrFill var(--dur, 10s) linear forwards; }
+@keyframes scrFill { to { transform: scaleX(1); } }
+.scr-brand { display: flex; align-items: center; gap: calc(var(--u) * 1); font-size: calc(var(--u) * 1.4); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.scr-brand .scr-brand__mark { width: calc(var(--u) * 2.8); height: calc(var(--u) * 2.8); color: var(--avo-text); }
+.scr-brand b { color: var(--avo-text); font-family: 'Syne', var(--avo-font-display); letter-spacing: .02em; font-size: 1.25em; text-transform: none; }
+.scr-brand b span { color: var(--coral); }
+
+@media (prefers-reduced-motion: reduce) {
+  .scr-bg { animation: none; }
+  .scr-slide, .scr-slide.is-on { transition: opacity .6s ease; transform: none; }
+}
+
+/* Slide-icon animations chosen in the admin (keyframe names are stored). */
+@keyframes pulse  { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+@keyframes bounce { 0%, 20%, 50%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-12%); } 60% { transform: translateY(-6%); } }
+@keyframes wobble { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(6deg); } 50% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
+@keyframes laugh  { 0%, 50%, 100% { transform: translateY(0); } 25% { transform: translateY(-6%); } 75% { transform: translateY(6%); } }

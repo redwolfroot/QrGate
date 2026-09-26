@@ -40,7 +40,8 @@ QrGate is a comprehensive system for managing events, tickets, and access contro
 - **Access Control**: QR code-based ticket validation for entry, with a mobile handheld scanner — a re-scanned (already used) ticket triggers a loud **double-entry alarm** showing when it was first scanned
 - **Register Scanner**: Pair a phone with a TicketFlow register by a 4-digit code (handheld tab “Kasse”); every ticket it scans opens at that register, ready to collect payment for a reservation
 - **Live Door Counter**: Every handheld shows “142 / 230 drin” for today, the same on all devices within seconds, plus the list of active scanners with their names (“Tor 1”) and scan counts
-- **Announcements**: Send a message from the admin (“Die Pause endet in 5 Minuten”) with a category colour, duration and audience; it covers the foyer screens and appears as a banner on handhelds and registers. One-click presets, history
+- **Foyer Screens**: Title (the show as a poster with banner and tonight's date), Welcome (slides and cast portraits from the admin) and Feedback (large QR code to the audience vote, drawn locally). One frame for all of them: logo, organiser, clock, the uploaded wallpaper, DE/EN alternation and slide progress; scales from 720p to 4K without scrolling. `screens/` lists them for setting up a display
+- **Announcements**: Send a message from the admin (“Die Pause endet in 5 Minuten”) with a category, duration and audience; on the foyer screens it takes over the whole display in the category style (info blue, attention yellow with warning tape, urgent red and pulsing, notice green) with icon, English line and countdown, and appears as a banner on handhelds and registers. One-click presets, history
 - **Live Dashboard**: `screens/live.php` for a backstage monitor: door ring, seats left, box-office takings today, active scanners, last admits and the running announcement. Opens with a read-only display link from the admin (*Screens*) or an admin session
 - **Admin Panel**: Dashboard for events, dates, locations, images, tickets and statistics, plus a **live door check-in monitor** (checked-in vs. sold, occupancy %, latest scans)
 - **Maintenance & Data Tools**: One-click **database backup** download plus a guarded danger zone (wipe data, reinstall, factory reset)
@@ -305,7 +306,7 @@ QrGate/
 │   ├── cancel.php           # Self-service ticket cancellation page (email link)
 │   ├── cancel-proxy.php     # Token-gated self-cancel proxy (POST only)
 │   ├── help/                # Help pages
-│   ├── screens/             # Event display / projection screens
+│   ├── screens/             # Foyer screens (title, welcome, feedback, live dashboard); shared frame in _screen.php + screens.css
 │   ├── vote/                # Public audience voting page
 │   ├── docker/              # nginx, php-fpm, supervisor config for the container
 │   ├── install.php          # First-run setup wizard UI
