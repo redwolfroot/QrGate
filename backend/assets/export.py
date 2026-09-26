@@ -3,6 +3,7 @@
     GET /api/export/tickets.csv    one row per ticket
     GET /api/export/attempts.csv   one row per scan at the door
     GET /api/export/revenue.csv    one row per day: statistics and payments
+    GET /api/export/guestlist.pdf  printable guest list of one date (?date=)
 
 Query parameters:
     date               a performance date (YYYY-MM-DD) or "Unlimited"; empty
@@ -25,6 +26,7 @@ from typing import Dict, Iterable, List, Optional
 import quart
 
 from assets.data import daily_stats_rows, export_tickets
+from assets.guestlist_pdf import render_guestlist_pdf
 from assets.ticket_manager import _authorized
 from assets.timeutil import today_iso
 from reds_simple_logger import Logger
@@ -266,6 +268,30 @@ def export_routes(app: quart.Quart):
             headers={
                 "Content-Type": "text/csv; charset=utf-8",
                 "Content-Disposition": f'attachment; filename="{export_filename(kind, date, "csv")}"',
+                "Cache-Control": "no-store",
+            },
+        )
+
+    @app.route("/api/export/guestlist.pdf", methods=["GET"])  # type: ignore
+    async def export_guestlist():
+        if not _authorized():
+            return quart.jsonify({"status": "error", "message": "Unauthorized"}), 401
+        date = str(quart.request.args.get("date") or "")
+        if not _DATE_RE.match(date):
+            return quart.jsonify({"status": "error", "error": "invalid_date", "message": "Invalid date"}), 400
+        try:
+            pdf = await asyncio.to_thread(render_guestlist_pdf, date)
+        except Exception as e:
+            logger.error(f"Guest list for {date} failed: {e}")
+            return quart.jsonify({"status": "error", "error": "failed", "message": "Could not render the guest list"}), 500
+        if pdf is None:
+            return quart.jsonify({"status": "error", "error": "unknown_date", "message": "No such date"}), 404
+        return quart.Response(
+            pdf,
+            mimetype="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="qrgate-gaesteliste-{date}.pdf"',
+                "Content-Length": str(len(pdf)),
                 "Cache-Control": "no-store",
             },
         )

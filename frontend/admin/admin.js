@@ -27,6 +27,7 @@
     up: '<path d="m18 15-6-6-6 6"/>', down: '<path d="m6 9 6 6 6-6"/>', x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
     upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
+    list: '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect width="8" height="4" x="8" y="2" rx="1"/><path d="m9 14 2 2 4-4"/>',
     dl: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
   };
   const icon = (k) => '<svg viewBox="0 0 24 24" aria-hidden="true">' + ICON[k] + '</svg>';
@@ -443,10 +444,14 @@
         + '<td><span class="adm-state ' + (d.seating ? 'ok' : 'muted') + '">' + (d.seating ? 'Platzwahl' : 'Frei') + '</span></td>'
         + '<td class="num">' + money(d.price) + (d.seating ? '<span class="adm-sub">Basis</span>' : '') + '</td>'
         + '<td class="num">' + num(d.tickets) + '</td><td class="num">' + num(d.available) + (st.sold ? '<span class="adm-sub">' + num(st.sold) + ' verkauft</span>' : '') + '</td>'
-        + '<td class="adm-rowact"><button type="button" class="adm-iconbtn" aria-label="Termin bearbeiten">' + icon('edit') + '</button></td></tr>';
+        + '<td class="adm-rowact"><button type="button" class="adm-iconbtn" data-gl="' + esc(d.date) + '" aria-label="Gästeliste als PDF" title="Gästeliste (PDF)">' + icon('list') + '</button>'
+        + '<button type="button" class="adm-iconbtn" aria-label="Termin bearbeiten">' + icon('edit') + '</button></td></tr>';
     });
     $('dayRows').innerHTML = rows.join('') || '<tr class="adm-empty"><td colspan="8">Noch keine Termine.</td></tr>';
-    $('dayRows').querySelectorAll('tr[data-open]').forEach((tr) => tr.addEventListener('click', () => openDay(tr.dataset.open)));
+    $('dayRows').querySelectorAll('tr[data-open]').forEach((tr) => tr.addEventListener('click', (e) => {
+      const gl = e.target.closest('[data-gl]');
+      if (gl) guestList(gl.dataset.gl, gl); else openDay(tr.dataset.open);
+    }));
   }
   function renderLocs() {
     const count = {};
@@ -781,6 +786,12 @@
     attempts: 'Jeder Scan am Einlass mit Zeit und Ergebnis (Einlass, bereits benutzt, nicht bezahlt, falscher Tag).',
     revenue: 'Eine Zeile pro Tag: Verkaufsstatistik, Einnahmen nach Zahlart (bar, Karte, online), Erstattungen und netto. Gilt für alle Termine.',
   };
+  async function guestList(date, btn) {
+    busyBtn(btn, true);
+    try { await download('export.php?' + new URLSearchParams({ kind: 'guestlist', date }), 'qrgate-gaesteliste-' + date + '.pdf'); toast('Gästeliste heruntergeladen.'); }
+    catch (err) { toast('Gästeliste fehlgeschlagen: ' + err.message, 'error'); }
+    busyBtn(btn, false);
+  }
   inits.export = () => {
     $('exDate').innerHTML = '<option value="">Alle Termine</option>'
       + (S.dates || []).map((d) => '<option value="' + esc(d.date) + '">' + esc(fmtDate(d.date)) + ' · ' + esc(d.time) + '</option>').join('')
@@ -792,6 +803,14 @@
       $('exCancelRow').hidden = k !== 'tickets';
     };
     $('exKind').addEventListener('change', sync); sync();
+    const upcoming = (S.dates || []).find((d) => d.date >= today);
+    $('glDate').innerHTML = (S.dates || []).map((d) => '<option value="' + esc(d.date) + '">' + esc(fmtDate(d.date)) + ' · ' + esc(d.time) + '</option>').join('')
+      || '<option value="">Noch keine Termine</option>';
+    if (upcoming) $('glDate').value = upcoming.date;
+    $('glForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      if ($('glDate').value) guestList($('glDate').value, e.submitter);
+    });
     $('exForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const k = $('exKind').value;

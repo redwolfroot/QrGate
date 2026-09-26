@@ -342,6 +342,13 @@ $nav = [
                     </select></div>
                 <div class="adm-actions"><button type="submit" class="avo-btn primary"><?php echo $svg('down'); ?><span>Herunterladen</span></button></div>
             </form>
+            <form class="avo-plate adm-pad adm-form" id="glForm">
+                <h2 class="avo-title"><?php echo $svg('down'); ?>Gästeliste (PDF)</h2>
+                <p class="avo-small">Zum Ausdrucken als Reserve am Einlass, falls Geräte oder Netz ausfallen: alle gültigen Tickets eines Termins nach Nachname, mit Ticket-Nummer und Kästchen zum Abhaken. Unbezahlte sind als „OFFEN“ markiert, Admin- und VIP-Tickets ohne Termin stehen am Ende.</p>
+                <div class="avo-field"><label class="avo-label" for="glDate">Termin</label>
+                    <select class="avo-select" id="glDate"></select></div>
+                <div class="adm-actions"><button type="submit" class="avo-btn primary"><?php echo $svg('down'); ?><span>Gästeliste herunterladen</span></button></div>
+            </form>
         </section>
 
         <!-- ============================================ VERANSTALTUNG -->
@@ -699,6 +706,6 @@ $nav = [
     <div class="avo-toast-stack" id="toasts" aria-live="polite"></div>
 
     <script>window.ADMIN = <?php echo json_encode($boot, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;</script>
-    <script src="admin.js?v=10" defer></script>
+    <script src="admin.js?v=11" defer></script>
 </body>
 </html>

@@ -46,6 +46,7 @@ QrGate is a comprehensive system for managing events, tickets, and access contro
 - **Admin Panel**: Dashboard for events, dates, locations, images, tickets and statistics, plus a **live door check-in monitor** (checked-in vs. sold, occupancy %, latest scans)
 - **Maintenance & Data Tools**: **Automatic backups** (interval, retention, hourly on event days, always before a danger-zone action), one-click database backup download plus a guarded danger zone (wipe data, reinstall, factory reset)
 - **CSV Export**: Tickets, the door scan log and revenue per day (by payment method, refunds, net) for bookkeeping; opens directly in Excel/LibreOffice, safe against formula injection
+- **Guest List (PDF)**: A printable list per date as a paper backup at the door: sorted by last name, large ticket numbers, unpaid tickets marked, a box to tick, tickets without a date at the end
 - **Multi-language Support**: German and English
 - **Responsive Design**: Optimized for desktop and mobile, light **and** dark
 
@@ -354,6 +355,7 @@ The admin panel provides the following features:
 - **Statistics**: Graphical display of ticket sales and availability
 - **Event Management**: Edit event settings, locations, and screens/projection displays
 - **Export**: Download tickets (per date, optionally with cancellations), the door scan log or revenue per day as CSV, in Excel format (semicolon, decimal comma, UTF-8 BOM) or standard CSV
+- **Guest List**: Download the printable guest list of a date (Export, or the list icon next to a date under *Termine & Orte*)
 - **Reminder Emails**: Turn pre-event reminders on or off and choose 1–7 days before the date
 - **Announcements** (*Durchsagen*): Send, end and review announcements for screens and staff; edit the quick buttons
 - **Live Dashboard Link** (*Screens*): Create, copy or revoke the display link for `screens/live.php`
@@ -415,6 +417,7 @@ All `/api/*` routes require the `Authorization: {auth_key}` header, except the p
 | `/api/admin/backups/download?name=`                      | GET      | Download one stored backup (name must be in the listing)                                                  |
 | `/api/admin/wipe-data` \| `/reinstall` | `/factory-reset` | POST     | Danger-zone maintenance                                                                                   |
 | `/api/export/tickets.csv` \| `/attempts.csv` \| `/revenue.csv` | GET | CSV exports (`date`, `include_cancelled`, `format=excel\|plain`)                                        |
+| `/api/export/guestlist.pdf?date=`                         | GET      | Printable guest list of one date                                                                          |
 
 ## Configuration
 

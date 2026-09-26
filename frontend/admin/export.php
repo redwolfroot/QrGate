@@ -1,7 +1,7 @@
 <?php
 /**
  * Streams a CSV export (tickets, access log, revenue) or the printable guest
- * list from the backend to the admin as a file download. Requires an
+ * list (PDF, one date) from the backend to the admin as a file download. Requires an
  * authenticated admin session; the backend API key never reaches the browser.
  * Read-only (GET), so no CSRF token is required.
  */
@@ -18,10 +18,15 @@ $kinds = [
     'tickets' => ['/api/export/tickets.csv', 'text/csv; charset=utf-8', 'csv'],
     'attempts' => ['/api/export/attempts.csv', 'text/csv; charset=utf-8', 'csv'],
     'revenue' => ['/api/export/revenue.csv', 'text/csv; charset=utf-8', 'csv'],
+    'guestlist' => ['/api/export/guestlist.pdf', 'application/pdf', 'pdf'],
 ];
 $kind = (string)($_GET['kind'] ?? '');
 $date = (string)($_GET['date'] ?? '');
-if (!isset($kinds[$kind]) || ($date !== '' && $date !== 'Unlimited' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date))) {
+$validDate = $date === '' || $date === 'Unlimited' || preg_match('/^\d{4}-\d{2}-\d{2}$/', $date);
+if ($kind === 'guestlist') {
+    $validDate = (bool)preg_match('/^\d{4}-\d{2}-\d{2}$/', $date); // one real date
+}
+if (!isset($kinds[$kind]) || !$validDate) {
     http_response_code(400);
     header('Content-Type: application/json');
     echo json_encode(['status' => 'error', 'message' => 'Invalid export']);
