@@ -671,6 +671,15 @@ def load_date(date: str):
     return result
 
 
+def date_exists(date: str) -> bool:
+    """True if `date` is one of the show's dates (quiet, unlike load_date)."""
+    conn = get_db()
+    try:
+        return conn.execute("SELECT 1 FROM dates WHERE date = ?", (date,)).fetchone() is not None
+    finally:
+        conn.close()
+
+
 def save_date(date: str, updated_data) -> None:
     """Update the single date row matching `date` with updated_data's fields."""
     if not isinstance(updated_data, dict):

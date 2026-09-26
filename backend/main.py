@@ -74,10 +74,11 @@ _RATE_LIMITS = {
     "/api/checkout/start": (12, 300),
     "/api/checkout/intent": (15, 300),
     "/api/checkout/complete": (10, 300),
-    # Live poll: every device every ~3 s (the PHP pages forward the client IP).
-    "/api/live/": (120, 60),
+    # Live poll: every device every ~3 s. The venue's handhelds, registers and
+    # screens usually share one public IP (Wi-Fi/NAT), so this is per venue.
+    "/api/live/": (1200, 60),
     # Announcements: screens poll /active every ~3 s; sending is human-paced.
-    "/api/broadcast/active": (120, 60),
+    "/api/broadcast/active": (600, 60),
     "/api/broadcast/": (30, 60),
     # Handheld joining a register by its 4-digit code: stops code guessing.
     "/api/boxoffice/pair/join": (20, 300),

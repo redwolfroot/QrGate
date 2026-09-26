@@ -523,6 +523,7 @@ $h = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES);
     .tf-cast .tag { flex-shrink: 0; margin-top: 3px; font-family: var(--avo-font-mono); font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; padding: 2px 8px; border: 1.5px solid currentColor; border-radius: 999px; }
     .tf-cast .txt { min-width: 0; overflow-wrap: anywhere; }
     .tf-cast[hidden] { display: none; }
+    .tf-sales .tf-cast { top: 67px; }
     .tf-cast.folded { padding: 6px 12px; font-size: .9rem; }
     .tf-cast.folded .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -1770,6 +1771,8 @@ function setView(v) {
     document.querySelectorAll(".tf-tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.view === v)));
     $("view-sell").hidden = v !== "sell";
     $("view-sales").hidden = v !== "sales";
+    // The announcement banner follows the visible view.
+    (v === "sales" ? $("view-sales") : document.querySelector(".tf-products")).prepend($("tfCast"));
     if (v === "sales") { if (salesDirty) loadSales(); setTimeout(() => $("searchInput").focus(), 0); }
     renderAll();
 }

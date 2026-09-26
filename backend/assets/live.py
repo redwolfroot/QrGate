@@ -8,7 +8,7 @@ from typing import Dict, Optional
 import quart
 from assets.data import (
     checkin_stats,
-    load_date,
+    date_exists,
     load_show,
     dashboard_overview,
     recent_checkins,
@@ -90,14 +90,14 @@ def active_devices() -> list:
     return out
 
 
-def today_counts() -> dict:
+def today_counts(stats: Optional[dict] = None) -> dict:
     """Door numbers for today's date, from checkin_stats() (same truth as the
     admin's check-in monitor)."""
     today = today_iso()
-    c = checkin_stats().get(today) or {}
+    c = (stats if stats is not None else checkin_stats()).get(today) or {}
     return {
         "today": today,
-        "event_today": load_date(today) is not None,
+        "event_today": date_exists(today),
         "checked_in": int(c.get("checked_in") or 0),
         "sold": int(c.get("sold") or 0),
         "pending": int(c.get("pending") or 0),
@@ -164,7 +164,7 @@ def dashboard_data() -> dict:
     now = time.time()
     b = active_broadcast(now)
     return {
-        **today_counts(),
+        **today_counts(stats),
         "dates": dates[:6],
         "register": {
             "revenue": round(sum(float(t.get("price") or 0) for t in register), 2),

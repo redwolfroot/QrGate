@@ -263,7 +263,15 @@
       renderCastHistory(r.history || [], r.now);
       if (!castPresets.length && Array.isArray(r.presets)) { castPresets = r.presets.map((p) => Object.assign({}, p)); renderCastPresets(); }
     }
-    castTimer = setTimeout(() => { if (location.hash.slice(1) === 'broadcast' && !document.hidden) castLoad(); else castTimer = setTimeout(castLoad, 10000); }, 5000);
+    castSchedule();
+  }
+  // Refresh only while the view is open; route() restarts it on return.
+  function castSchedule() {
+    clearTimeout(castTimer);
+    castTimer = setTimeout(() => {
+      if (location.hash.slice(1) !== 'broadcast') return;
+      if (document.hidden) castSchedule(); else castLoad();
+    }, 5000);
   }
   function renderCastNow(b) {
     const box = $('castNowBody');

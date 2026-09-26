@@ -1,5 +1,6 @@
 import datetime as dt
-from typing import List, Optional
+from functools import lru_cache
+from typing import Optional
 from urllib.parse import urlparse
 
 import config.conf as config
@@ -81,7 +82,9 @@ def _transitions(tz, year: int) -> list:
     return found
 
 
-def _vtimezone(tz, tzid: str, year: int) -> List[str]:
+@lru_cache(maxsize=16)
+def _vtimezone(tz, tzid: str, year: int) -> tuple:
+    """Depends only on zone and year; cached, the hour scan is not free."""
     lines = ["BEGIN:VTIMEZONE", f"TZID:{tzid}"]
     trans = _transitions(tz, year)
     if not trans:
@@ -96,7 +99,7 @@ def _vtimezone(tz, tzid: str, year: int) -> List[str]:
                   f"TZOFFSETFROM:{_fmt_offset(before)}", f"TZOFFSETTO:{_fmt_offset(after)}",
                   f"TZNAME:{name}", f"END:{kind}"]
     lines.append("END:VTIMEZONE")
-    return lines
+    return tuple(lines)
 
 
 def _host(base_url: str) -> str:
@@ -129,7 +132,7 @@ def build_ics(*, uid: str, date: str, time: str, title: str, location: str = "",
     lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//avocloud//QrGate//EN",
              "CALSCALE:GREGORIAN", f"METHOD:{'CANCEL' if cancelled else 'PUBLISH'}"]
     if start:
-        lines += _vtimezone(tz, tzid, day.year)
+        lines += list(_vtimezone(tz, tzid, day.year))
     lines += ["BEGIN:VEVENT", f"UID:{uid}", f"DTSTAMP:{_fmt_utc(now)}"]
     if start:
         end = start + dt.timedelta(minutes=duration_min)

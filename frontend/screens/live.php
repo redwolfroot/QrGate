@@ -20,7 +20,8 @@ if (!preg_match('/^[A-Za-z0-9_-]{16,64}$/', $token)) {
  *  bring a display token, which the backend checks on every call. */
 function live_fetch(bool $isAdmin, string $token): array
 {
-    $query = ($isAdmin && $token === '') ? '' : '?display_token=' . urlencode($token);
+    // An admin session reads without a token (an old link must not lock it out).
+    $query = $isAdmin ? '' : '?display_token=' . urlencode($token);
     $ch = curl_init(rtrim(API_BASE_URL, '/') . '/api/live/dashboard' . $query);
     $headers = ['Authorization: ' . API_KEY];
     if (!empty($_SERVER['REMOTE_ADDR'])) {

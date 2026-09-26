@@ -1395,11 +1395,12 @@ def resend_ticket(app=quart.Quart):
             retry_in = RESEND_COOLDOWN_SECONDS if since is None else int(RESEND_COOLDOWN_SECONDS - since) + 1
             return quart.jsonify({"status": "error", "message": "cooldown",
                                   "retry_in": max(1, retry_in)}), 429
+        # Claimed before the next await, so a second click cannot slip in.
+        _resend_inflight.add(tid)
 
         date = str(ticket.get("valid_date") or "")
-        di = await asyncio.to_thread(load_date, date) if date and date != "Unlimited" else None
-        _resend_inflight.add(tid)
         try:
+            di = await asyncio.to_thread(load_date, date) if date and date != "Unlimited" else None
             await send_email(
                 str(ticket.get("first_name") or ""), str(ticket.get("last_name") or ""),
                 email, tid, bool(ticket.get("paid")),

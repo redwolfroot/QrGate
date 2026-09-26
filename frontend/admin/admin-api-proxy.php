@@ -56,6 +56,13 @@ if ($method === 'POST') {
     if ($endpoint === 'broadcast_send' && is_array($data)) {
         $data['created_by'] = (string)($_SESSION['username'] ?? 'admin');
     }
+    if (strpos($endpoint, 'broadcast_') === 0) {
+        // Keep the backend's error code (empty_text, no_targets, ...) for the UI.
+        [$code, $body] = qrgate_api($allowedEndpoints[$endpoint], 'POST', $data);
+        http_response_code($code ?: 502);
+        echo json_encode($body ?? ['status' => 'error', 'message' => 'unavailable']);
+        exit;
+    }
     $result = makeApiCall($allowedEndpoints[$endpoint], 'POST', $data);
 } else {
     $result = makeApiCall($allowedEndpoints[$endpoint]);
