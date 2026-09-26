@@ -98,6 +98,13 @@ def edit_show(app=quart.Quart):
                 except (TypeError, ValueError):
                     return quart.jsonify({"status": "error", "message": "invalid reminder_days"}), 400
 
+            # Length of a performance, for the calendar entry (.ics).
+            if "event_duration_min" in data:
+                try:
+                    show["event_duration_min"] = min(24 * 60, max(15, int(data["event_duration_min"])))
+                except (TypeError, ValueError):
+                    return quart.jsonify({"status": "error", "message": "invalid event_duration_min"}), 400
+
             # Dates are never written back from the loaded show: that would
             # reset availability to what it was a moment ago. A client that
             # still sends a full `dates` dict gets it merged by delta.

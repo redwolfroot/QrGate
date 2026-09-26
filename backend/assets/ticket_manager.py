@@ -28,6 +28,7 @@ import urllib.error
 from html import escape
 
 from assets import ticket_pdf
+from assets import ics
 import io
 import smtplib
 from email.mime.text import MIMEText
@@ -101,6 +102,7 @@ TICKET_I18N = {
             "To re-enter, get a stamp or wristband at the exit.",
         ],
         "open_pdf": "Open ticket as PDF",
+        "add_calendar": "Add to calendar",
         "pdf_attached": "Your ticket is also attached as a PDF.",
         "email_cancel_pre": "Can't make it? ",
         "email_cancel_link": "Cancel this ticket",
@@ -160,6 +162,7 @@ TICKET_I18N = {
             "Wiedereinlass nur mit Stempel oder Bändchen vom Ausgang.",
         ],
         "open_pdf": "Ticket als PDF öffnen",
+        "add_calendar": "Zum Kalender hinzufügen",
         "pdf_attached": "Dein Ticket hängt außerdem als PDF an.",
         "email_cancel_pre": "Verhindert? ",
         "email_cancel_link": "Ticket stornieren",
@@ -808,6 +811,7 @@ def _ticket_email_html(
     tid: str,
     pdf_url: str,
     cancel_url: str = "",
+    ics_url: str = "",
     seat_label: str = "",
     contact: str = "",
     has_banner: bool = False,
@@ -848,6 +852,14 @@ def _ticket_email_html(
         f'{T["email_cancel_post"]}</p>'
         if cancel_url else ""
     )
+    ics_btn = (
+        f'<td width="8" style="font-size:0;line-height:0;">&nbsp;</td>'
+        f'<td style="border:1px solid #C8CCD0;border-radius:6px;">'
+        f'<a href="{ics_url}" style="display:inline-block;padding:10px 16px;{_M}font-size:11px;'
+        f'font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:{MAIL_TEXT};'
+        f'text-decoration:none;">{T["add_calendar"]}&nbsp; &#43;</a></td>'
+        if ics_url else ""
+    )
     # One perforation notch: a canvas-coloured disc centred on the card edge,
     # so it reads as a bite out of the card (clients that drop the negative
     # margin just show a dot on the dashed line).
@@ -884,7 +896,7 @@ def _ticket_email_html(
                     <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px auto 0 auto;"><tr>
                       <td style="border:1px solid #C8CCD0;border-radius:6px;">
                         <a href="{pdf_url}" style="display:inline-block;padding:10px 16px;{_M}font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:{MAIL_TEXT};text-decoration:none;">{T["open_pdf"]}&nbsp; &#8599;</a>
-                      </td>
+                      </td>{ics_btn}
                     </tr></table>
                   </td>
                 </tr>
@@ -968,6 +980,35 @@ def _frontend_base(show_data: dict) -> str:
     if not re.match(r"^https?://", base, re.IGNORECASE):
         base = "https://" + base
     return base
+
+
+def _ticket_links(tid: str, date: str, show_data: dict) -> Dict[str, str]:
+    """Links for the buyer: PDF, self-cancel and calendar entry. They point at
+    the shop (admin setting "app_domain", else the env-configured
+    frontend_origin), never at the backend, which buyers usually cannot
+    reach. The shop pages are thin PHP proxies to token-gated backend routes.
+    Without a shop address the backend URL is the only one there is."""
+    base = _frontend_base(show_data)
+    token = ticket_token(tid)
+    dated = bool(date) and date != "Unlimited"
+    backend = str(config.API.backend_url).rstrip("/")
+    q = f"tid={tid}&token={token}"
+    return {
+        "base": base,
+        "pdf": f"{base}/ticket.php?{q}" if base else f"{backend}/codes/pdf?{q}",
+        # Self-service cancel only for real dated tickets (a dateless
+        # admin/vip ticket has no online cancellation).
+        "cancel": f"{base}/cancel.php?{q}" if base and dated else "",
+        "ics": (f"{base}/ics.php?{q}" if base else f"{backend}/codes/ics?{q}") if dated else "",
+    }
+
+
+def _ics_part(data: bytes, method: str = "PUBLISH") -> MIMEText:
+    """event.ics as an attachment; mail clients offer "add to calendar"."""
+    part = MIMEText(data.decode("utf-8"), "calendar", "utf-8")
+    part.set_param("method", method)
+    part.add_header("Content-Disposition", "attachment", filename="event.ics")
+    return part
 
 
 def _clean_recipient(email) -> str:
@@ -1070,7 +1111,7 @@ async def send_cancel_email(ticket: dict, actor: str, refund_id: Optional[str],
         contact=escape(view["contact"]),
         lang=lang if lang in TICKET_I18N else "en",
     )
-    message = MIMEMultipart("alternative")
+    message = MIMEMultipart("mixed")
     message["From"] = config.Mail.smtp_user
     message["To"] = email
     message["Subject"] = T["cx_subject"].format(
@@ -1078,6 +1119,11 @@ async def send_cancel_email(ticket: dict, actor: str, refund_id: Optional[str],
         date=_fmt_ticket_date(date) if date and date != "Unlimited" else "",
     ).rstrip(", ")
     message.attach(MIMEText(html_content, "html", "utf-8"))
+    # Removes the entry the ticket email put in the buyer's calendar.
+    ics_bytes = ics.ticket_ics(view, show_data, base_url=_frontend_base(show_data),
+                               cancelled=True)
+    if ics_bytes:
+        message.attach(_ics_part(ics_bytes, "CANCEL"))
     await _smtp_send(message, email)
 
 
@@ -1147,6 +1193,12 @@ async def send_reminder_email(tickets: List[dict], days_left: int) -> None:
         name = f"Ticket-{tids[0]}.pdf" if len(tids) == 1 else "Tickets.pdf"
         part.add_header("Content-Disposition", "attachment", filename=name)
         message.attach(part)
+    # Same UID as the first ticket's email, so it updates that entry.
+    links = _ticket_links(tids[0], date, show_data)
+    ics_bytes = ics.ticket_ics(view, show_data, base_url=links["base"],
+                               pdf_url=links["pdf"], cancel_url=links["cancel"])
+    if ics_bytes:
+        message.attach(_ics_part(ics_bytes))
     await _smtp_send(message, email)
 
 
@@ -1202,23 +1254,10 @@ async def send_email(
     time_long = (ticket_pdf.long_time(event_time, lang)
                  if event_time and date and date != "Unlimited" else "")
 
-    # Links in the email point at the shop (admin setting "app_domain", else
-    # the env-configured frontend_origin), never at the backend, which buyers
-    # usually cannot reach. Both pages are thin PHP proxies to token-gated
-    # backend routes.
-    frontend_base = _frontend_base(show_data)
-    token = ticket_token(tid)
-    # Self-service cancel link: only for real dated tickets (a dateless
-    # admin/vip ticket has no online cancellation).
-    cancel_url = ""
-    if frontend_base and date and date != "Unlimited":
-        cancel_url = f"{frontend_base}/cancel.php?tid={tid}&token={token}"
-    # The PDF link: the shop's ticket.php streams /codes/pdf. Without a shop
-    # address the backend URL is the only one there is.
-    pdf_url = (
-        f"{frontend_base}/ticket.php?tid={tid}&token={token}" if frontend_base
-        else f"{str(config.API.backend_url).rstrip('/')}/codes/pdf?tid={tid}&token={token}"
-    )
+    links = _ticket_links(tid, date, show_data)
+    pdf_url, cancel_url = links["pdf"], links["cancel"]
+    ics_bytes = ics.ticket_ics(view, show_data, base_url=links["base"],
+                               pdf_url=pdf_url, cancel_url=cancel_url)
 
     if type != "normal":
         subject = T["subject_paid"]
@@ -1249,6 +1288,7 @@ async def send_email(
         tid=escape(str(tid)),
         pdf_url=escape(pdf_url),
         cancel_url=escape(cancel_url),
+        ics_url=escape(links["ics"]) if ics_bytes else "",
         seat_label=escape(view["seat"]),
         contact=escape(view["contact"]),
         has_banner=bool(banner),
@@ -1278,6 +1318,8 @@ async def send_email(
     part = MIMEApplication(pdf_bytes, _subtype="pdf")
     part.add_header("Content-Disposition", "attachment", filename=f"Ticket-{tid}.pdf")
     message.attach(part)
+    if ics_bytes:
+        message.attach(_ics_part(ics_bytes))
 
     await _smtp_send(message, email)
 
@@ -1522,6 +1564,41 @@ def view_ticket(app=quart.Quart):
             return quart.jsonify({"error": "PDF not found"}), 404
         return quart.Response(pdf, mimetype="application/pdf", headers={
             "Content-Disposition": f'inline; filename="Ticket-{tid}.pdf"',
+            "Cache-Control": "no-store",
+        })
+
+    @app.route("/codes/ics", methods=["GET"])    # type: ignore
+    async def show_ics():
+        """Calendar entry. ?tid&token: the ticket's entry (same token as the
+        PDF). ?date=YYYY-MM-DD: the date's entry without ticket data, for the
+        shop's confirmation page; dates are public anyway."""
+        show_data = await asyncio.to_thread(load_show)
+        base = _frontend_base(show_data)
+        date = quart.request.args.get("date")
+        if date:
+            d = await asyncio.to_thread(load_date, date)
+            if not d:
+                return quart.jsonify({"error": "Not found"}), 404
+            loc = ", ".join(x for x in _location_for_date(date, show_data) if x)
+            data = ics.date_ics(date, str(d.get("time") or ""), loc, show_data, base)
+            filename = f"{date}.ics"
+        else:
+            tid = str(quart.request.args.get("tid") or "")
+            if not tid:
+                return quart.jsonify({"error": "Missing tid"}), 400
+            if not _token_valid(tid, quart.request.args.get("token")):
+                return quart.jsonify({"error": "Forbidden"}), 403
+            view = await asyncio.to_thread(ticket_view, tid, None, show_data)
+            if view is None or view["status"] == "cancelled":
+                return quart.jsonify({"error": "Not found"}), 404
+            links = _ticket_links(tid, view["date"], show_data)
+            data = ics.ticket_ics(view, show_data, base_url=links["base"],
+                                  pdf_url=links["pdf"], cancel_url=links["cancel"])
+            filename = f"Ticket-{tid}.ics"
+        if not data:
+            return quart.jsonify({"error": "No date"}), 404
+        return quart.Response(data, mimetype="text/calendar", headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
             "Cache-Control": "no-store",
         })
 

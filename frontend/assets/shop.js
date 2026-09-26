@@ -436,6 +436,8 @@
     ].filter((r) => r[1]);
     $('doneRows').innerHTML = rows.map((r) => '<div><dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd></div>').join('');
     $('doneText').textContent = tr(paid ? T.done_paid_text : T.done_reserved_text, { email: o.email || '' });
+    // The date's calendar entry; the ticket's own one comes with the email.
+    $('doneIcs').href = 'ics.php?date=' + encodeURIComponent(o.date || S.ev.date || '');
     S.hold = null;
     go('done');
   }

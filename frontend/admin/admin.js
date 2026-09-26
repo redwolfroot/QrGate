@@ -239,6 +239,7 @@
     const f = $('eventForm');
     $('evOrga').value = S.orga_name || ''; $('evTitle').value = S.title || ''; $('evSub').value = S.subtitle || '';
     $('evMail').value = S.contact_email || ''; $('evDomain').value = S.app_domain || '';
+    $('evDuration').value = String(S.event_duration_min || 120);
     $('evMethods').value = S.payment_methods || 'both'; $('evLock').checked = !!S.store_lock;
     $('evRemind').checked = !!S.reminder_enabled; $('evRemindDays').value = String(S.reminder_days || 1);
     const syncRemind = () => { $('evRemindDays').disabled = !$('evRemind').checked; };
@@ -252,6 +253,7 @@
         contact_email: $('evMail').value.trim(), app_domain: $('evDomain').value.trim(),
         payment_methods: $('evMethods').value, store_lock: $('evLock').checked,
         reminder_enabled: $('evRemind').checked, reminder_days: Number($('evRemindDays').value),
+        event_duration_min: Math.min(1440, Math.max(15, Number($('evDuration').value) || 120)),
       };
       const r = await proxy('show_edit', body);
       busyBtn(btn, false);

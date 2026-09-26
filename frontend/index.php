@@ -90,6 +90,7 @@ $J = [
         'done_paid_text' => 'Deine Tickets sind unterwegs an {email}. Am Einlass den QR-Code zeigen.',
         'done_reserved_text' => 'Deine Tickets sind unterwegs an {email}. Bitte bezahle am Veranstaltungstag an der Abendkasse, dann werden sie freigeschaltet.',
         'done_spam' => 'Nichts angekommen? Schau im Spam-Ordner nach.',
+        'add_calendar' => 'Zum Kalender hinzufügen',
         'finish' => 'Fertig', 'date' => 'Datum', 'seats' => 'Plätze', 'name' => 'Name', 'location' => 'Ort',
         'required' => 'Pflichtfeld',
         'err' => [
@@ -147,6 +148,7 @@ $J = [
         'done_paid_text' => 'Your tickets are on their way to {email}. Show the QR code at the door.',
         'done_reserved_text' => 'Your tickets are on their way to {email}. Please pay at the box office on the day to activate them.',
         'done_spam' => 'Nothing arrived? Check your spam folder.',
+        'add_calendar' => 'Add to calendar',
         'finish' => 'Done', 'date' => 'Date', 'seats' => 'Seats', 'name' => 'Name', 'location' => 'Venue',
         'required' => 'required',
         'err' => [
@@ -497,6 +499,7 @@ $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES);
                         <div class="stub__perf" aria-hidden="true"></div>
                         <dl class="stub__rows" id="doneRows"></dl>
                         <p class="avo-small stub__note" id="doneText"></p>
+                        <p class="stub__note"><a class="avo-btn compact" id="doneIcs" href="#" download><?php echo $J['add_calendar']; ?></a></p>
                         <p class="avo-small avo-muted"><?php echo $J['done_spam']; ?></p>
                     </div>
                 </section>
@@ -541,7 +544,7 @@ $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES);
             't' => $J,
         ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
     </script>
-    <script src="assets/shop.js?v=2" defer></script>
+    <script src="assets/shop.js?v=3" defer></script>
 
     <?php if ($askLang): ?>
     <dialog id="langAsk" class="avo-dialog lang-ask" aria-labelledby="langAskTitle">

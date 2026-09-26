@@ -43,6 +43,7 @@ $boot = [
         'subtitle' => $shows['subtitle'] ?? '',
         'contact_email' => $shows['contact_email'] ?? '',
         'app_domain' => $shows['app_domain'] ?? '',
+        'event_duration_min' => (int)($shows['event_duration_min'] ?? 120),
         'reminder_enabled' => !empty($shows['reminder_enabled']),
         'reminder_days' => (int)($shows['reminder_days'] ?? 1),
         'store_lock' => !empty($shows['store_lock']),
@@ -256,8 +257,13 @@ $nav = [
                         <div class="avo-field"><label class="avo-label" for="evTitle">Titel <span class="req">*</span></label>
                             <input class="avo-input" id="evTitle" name="title" maxlength="120" required></div>
                     </div>
-                    <div class="avo-field"><label class="avo-label" for="evSub">Untertitel</label>
-                        <input class="avo-input" id="evSub" name="subtitle" maxlength="160"></div>
+                    <div class="avo-grid c2">
+                        <div class="avo-field"><label class="avo-label" for="evSub">Untertitel</label>
+                            <input class="avo-input" id="evSub" name="subtitle" maxlength="160"></div>
+                        <div class="avo-field"><label class="avo-label" for="evDuration">Dauer (Minuten)</label>
+                            <input class="avo-input" id="evDuration" name="event_duration_min" type="number" min="15" max="1440" step="5" inputmode="numeric">
+                            <p class="avo-help">Für den Kalendereintrag in der Ticket-Mail.</p></div>
+                    </div>
                     <div class="avo-grid c2">
                         <div class="avo-field"><label class="avo-label" for="evMail">Kontakt-E-Mail</label>
                             <div class="avo-field-icon"><?php echo $svg('mail'); ?><input class="avo-input" id="evMail" name="contact_email" type="email"></div>
@@ -540,6 +546,6 @@ $nav = [
     <div class="avo-toast-stack" id="toasts" aria-live="polite"></div>
 
     <script>window.ADMIN = <?php echo json_encode($boot, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;</script>
-    <script src="admin.js?v=6" defer></script>
+    <script src="admin.js?v=7" defer></script>
 </body>
 </html>
