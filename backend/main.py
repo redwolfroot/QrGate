@@ -11,7 +11,7 @@ import quart
 import quart_cors
 from quart import Response, request
 from assets.vaildate import validate_ticket
-from assets.ticket_manager import create_ticket, edit_ticket, view_ticket, cancel_ticket
+from assets.ticket_manager import create_ticket, edit_ticket, view_ticket, cancel_ticket, resend_ticket
 from assets.manage_show import get_show, edit_show, cast_image_upload
 from assets.data import img_show, init_db
 from assets.vote import vote
@@ -60,6 +60,7 @@ _RATE_LIMITS = {
     "/api/ticket/create": (20, 60),      # buying is slow & human-paced
     "/api/ticket/cancel": (30, 60),      # admin-driven refunds, human-paced
     "/api/ticket/self-cancel": (10, 60), # public storno link, token-gated
+    "/api/ticket/resend": (30, 60),      # staff resends; per ticket it is 1 per 30 s
     "/api/auth/login": (10, 300),        # login brute-force guard
     "/api/user/check": (30, 60),
     "/api/vote": (10, 60),
@@ -137,6 +138,7 @@ create_ticket(app)
 edit_ticket(app)
 view_ticket(app)
 cancel_ticket(app)
+resend_ticket(app)
 get_show(app)
 edit_show(app)
 cast_image_upload(app)

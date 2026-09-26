@@ -12,6 +12,7 @@ from assets.data import (
     seat_index,
     bind_seats,
     release_seats_for_ticket,
+    mark_mail_sent,
 )
 from assets.data import log_sale
 from assets.stats import log_ticket_refund
@@ -1279,6 +1280,103 @@ async def send_email(
     message.attach(part)
 
     await _smtp_send(message, email)
+
+    # Bookkeeping for "resend": when and how often it went out. The address it
+    # reached becomes the ticket's address (a typo corrected at the counter).
+    # Never let this fail a mail that was already delivered.
+    if stored:
+        try:
+            new_addr = email if email != str(stored.get("email") or "").strip() else None
+            await asyncio.to_thread(
+                mark_mail_sent, tid, local_now().isoformat(timespec="seconds"), new_addr
+            )
+        except Exception as e:
+            logger.error(f"Could not record the ticket email for {tid}: {e}")
+
+
+# ---- resend the ticket email (box office / admin) ----------------------------
+RESEND_COOLDOWN_SECONDS = 30
+_resend_inflight: set = set()
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _mask_email(email: str) -> str:
+    """j***@example.com: enough for the cashier to confirm, not a full leak."""
+    local, _, domain = str(email).partition("@")
+    return f"{local[:1]}***@{domain}" if local else email
+
+
+def _seconds_since(iso_ts: Optional[str]) -> Optional[float]:
+    if not iso_ts:
+        return None
+    try:
+        then = datetime.fromisoformat(str(iso_ts))
+        if then.tzinfo is None:
+            then = then.replace(tzinfo=local_now().tzinfo)
+        return (local_now() - then).total_seconds()
+    except ValueError:
+        return None
+
+
+def resend_ticket(app=quart.Quart):
+    @app.route("/api/ticket/resend", methods=["POST"])   # type: ignore
+    async def resend_ticket():
+        """Body: {"tid", "email" (optional: send there and store it)}
+        -> {"status":"success","sent_to":"j***@example.com","mail_sent_at","mail_count"}
+        Errors (message): not_found, cancelled, no_email, invalid_email,
+        cooldown (+retry_in), mail_not_configured, smtp_failed."""
+        if not _authorized():
+            return quart.jsonify({"status": "error", "message": "Unauthorized"}), 401
+        data = await quart.request.get_json(silent=True) or {}
+        tid = str(data.get("tid") or "").strip().upper()
+        ticket = await asyncio.to_thread(load_ticket_id, tid) if tid else None
+        if not ticket:
+            return quart.jsonify({"status": "error", "message": "not_found"}), 404
+        if ticket.get("status") == "cancelled":
+            return quart.jsonify({"status": "error", "message": "cancelled"}), 409
+
+        given = str(data.get("email") or "").strip()
+        email = _clean_recipient(given or ticket.get("email"))
+        if not email:
+            msg = "invalid_email" if given else "no_email"
+            return quart.jsonify({"status": "error", "message": msg}), 400
+        if given and not _EMAIL_RE.match(email):
+            return quart.jsonify({"status": "error", "message": "invalid_email"}), 400
+        if not config.Mail.smtp_server:
+            return quart.jsonify({"status": "error", "message": "mail_not_configured"}), 503
+
+        # One send per ticket every 30 s: a double click (or a second cashier)
+        # must not mail the buyer twice. In-flight covers the seconds the SMTP
+        # handshake takes, mail_sent_at the time after.
+        since = _seconds_since(ticket.get("mail_sent_at"))
+        if tid in _resend_inflight or (since is not None and since < RESEND_COOLDOWN_SECONDS):
+            retry_in = RESEND_COOLDOWN_SECONDS if since is None else int(RESEND_COOLDOWN_SECONDS - since) + 1
+            return quart.jsonify({"status": "error", "message": "cooldown",
+                                  "retry_in": max(1, retry_in)}), 429
+
+        date = str(ticket.get("valid_date") or "")
+        di = await asyncio.to_thread(load_date, date) if date and date != "Unlimited" else None
+        _resend_inflight.add(tid)
+        try:
+            await send_email(
+                str(ticket.get("first_name") or ""), str(ticket.get("last_name") or ""),
+                email, tid, bool(ticket.get("paid")),
+                date=date, event_time=str((di or {}).get("time") or ""),
+                seat_label=ticket.get("seat_label"), lang=ticket.get("lang"),
+            )
+        except Exception as e:
+            logger.error(f"Resending the ticket email for {tid} failed: {e}")
+            return quart.jsonify({"status": "error", "message": "smtp_failed"}), 502
+        finally:
+            _resend_inflight.discard(tid)
+
+        fresh = await asyncio.to_thread(load_ticket_id, tid) or {}
+        return quart.jsonify({
+            "status": "success",
+            "sent_to": _mask_email(email),
+            "mail_sent_at": fresh.get("mail_sent_at"),
+            "mail_count": fresh.get("mail_count") or 0,
+        })
 
 
 def edit_ticket(app=quart.Quart):

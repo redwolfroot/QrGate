@@ -203,6 +203,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["ajax"])) {
             if ($code === 410) $out = ["status" => "error", "message" => "pair_gone"];
             break;
 
+        case "resend":
+            // Resend the ticket email, optionally to a corrected address
+            // (stored on the ticket). Box office and admin alike.
+            $payload = ["tid" => (string) ($in["tid"] ?? "")];
+            if (trim((string) ($in["email"] ?? "")) !== "") $payload["email"] = trim((string) $in["email"]);
+            [, $out] = call_api("api/ticket/resend", $payload);
+            break;
+
         case "edit":
             if (!$isAdmin) {
                 http_response_code(403);
@@ -276,6 +284,10 @@ $T = [
         "method_bar" => "Bar", "method_card" => "Karte", "method_free" => "Frei", "method_stripe" => "Online", "method_paid" => "Vor Ort zahlen",
         "report_title" => "Kassenabschluss", "report_by" => "Kasse", "report_sales" => "Verkäufe",
         "shortcuts" => "Tasten: 1–9 Kategorie · Entf letzte entfernen · Enter kassieren · Esc leeren",
+        "mail_resend" => "Erneut senden", "mail_last" => "Zuletzt gesendet", "mail_never" => "Noch nicht per E-Mail gesendet.",
+        "mail_hint" => "Eine geänderte Adresse wird am Ticket gespeichert.", "mail_sent" => "Gesendet an",
+        "mail_cooldown" => "Gerade erst gesendet. Bitte in {s} s noch einmal.", "mail_smtp" => "Mailserver nicht erreichbar. Das Ticket bleibt unverändert.",
+        "mail_noconf" => "Kein Mailserver eingerichtet.", "mail_invalid" => "Ungültige E-Mail-Adresse.", "mail_none" => "Bitte eine E-Mail-Adresse eingeben.",
     ],
     "en" => [
         "subtitle" => "Box office", "tab_sell" => "Register", "tab_sales" => "Sales",
@@ -323,6 +335,10 @@ $T = [
         "method_bar" => "Cash", "method_card" => "Card", "method_free" => "Free", "method_stripe" => "Online", "method_paid" => "Pay at venue",
         "report_title" => "Register report", "report_by" => "Register", "report_sales" => "Sales",
         "shortcuts" => "Keys: 1–9 category · Del remove last · Enter charge · Esc clear",
+        "mail_resend" => "Send again", "mail_last" => "Last sent", "mail_never" => "Not sent by email yet.",
+        "mail_hint" => "A changed address is saved on the ticket.", "mail_sent" => "Sent to",
+        "mail_cooldown" => "Just sent. Please try again in {s} s.", "mail_smtp" => "Mail server unreachable. The ticket is unchanged.",
+        "mail_noconf" => "No mail server set up.", "mail_invalid" => "Invalid email address.", "mail_none" => "Please enter an email address.",
     ],
 ];
 $L = $T[$lang_code];
@@ -1594,7 +1610,7 @@ function renderTicket(t) {
         t.category ? [L.price, esc(t.category) + (t.price != null ? " · " + esc(money(t.price)) : "")] : null,
         t.seat_label ? [L.seat, esc(t.seat_label)] : null,
         name ? [L.first_name + " / " + L.last_name, esc(name)] : null,
-        t.email ? [L.email, esc(t.email)] : null,
+        t.email && t.status === "cancelled" ? [L.email, esc(t.email)] : null,
         t.method ? [L.method, esc(methodLabel(t.method))] : null,
         t.seller ? [L.seller, esc(t.seller)] : null,
         t.created_at ? [L.created, esc(fmtDate(t.created_at.slice(0, 10), false) + " " + fmtTime(t.created_at))] : null,
@@ -1623,12 +1639,54 @@ function renderTicket(t) {
     }
     if (active) {
         html += '<div class="grid gap-2" style="border-top:1px solid var(--avo-border);padding-top:14px;">' +
+            '<div class="font-bold">' + esc(L.email) + "</div>" +
+            '<form class="tf-search" id="tdMailForm" style="margin:0;" autocomplete="off">' +
+            '<input type="email" class="input" id="tdMail" placeholder="' + esc(L.email) + '">' +
+            '<button type="submit" class="btn-secondary" id="tdResend">' + esc(L.mail_resend) + "</button></form>" +
+            '<p class="text-xs avo-muted" id="tdMailInfo"></p></div>';
+    }
+    if (active) {
+        html += '<div class="grid gap-2" style="border-top:1px solid var(--avo-border);padding-top:14px;">' +
             '<input type="text" class="input" id="tdReason" maxlength="200" placeholder="' + esc(L.cancel_reason) + '">' +
             '<button type="button" class="btn-destructive" id="tdCancel">' + esc(L.cancel_ticket) + "</button></div>";
     }
     $("tdBody").innerHTML = html;
 
     $("tdPrint") && $("tdPrint").addEventListener("click", () => printTickets([t.tid]));
+    if ($("tdMailForm")) {
+        $("tdMail").value = t.email || "";
+        const mailInfo = () => {
+            const at = t.mail_sent_at || "";
+            $("tdMailInfo").textContent = at
+                ? L.mail_last + ": " + (at.slice(0, 10) === TF.today ? "" : fmtDate(at.slice(0, 10), false) + " ") +
+                  fmtTime(at) + (t.mail_count > 1 ? " (" + t.mail_count + "×)" : "") + " · " + L.mail_hint
+                : L.mail_never + " " + L.mail_hint;
+        };
+        mailInfo();
+        $("tdMailForm").addEventListener("submit", async e => {
+            e.preventDefault();
+            const email = $("tdMail").value.trim();
+            if (!email) { toast(L.mail_none, "err"); return; }
+            const btn = $("tdResend");
+            btn.disabled = true;
+            try {
+                const r = await api("resend", { tid: t.tid, email });
+                if (r.status !== "success") {
+                    const m = {
+                        cooldown: L.mail_cooldown.replace("{s}", r.retry_in || 30),
+                        smtp_failed: L.mail_smtp, mail_not_configured: L.mail_noconf,
+                        invalid_email: L.mail_invalid, no_email: L.mail_none,
+                    }[r.message];
+                    throw new Error(m || r.message || "?");
+                }
+                toast(L.mail_sent + " " + r.sent_to);
+                Object.assign(t, { email, mail_sent_at: r.mail_sent_at, mail_count: r.mail_count });
+                mailInfo();
+                salesDirty = true;
+            } catch (e) { toast(e.message, "err"); }
+            finally { btn.disabled = false; }
+        });
+    }
     $("tdBody").querySelectorAll("[data-collect]").forEach(b => b.addEventListener("click", async () => {
         try {
             const r = await api("collect", { tid: t.tid, method: b.dataset.collect });

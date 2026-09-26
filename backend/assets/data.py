@@ -203,6 +203,8 @@ def _migrate_ticket_columns() -> None:
         "created_at": "TEXT",                # local ISO timestamp of creation
         "paid_at": "TEXT",                   # local ISO ts payment was taken at the box office
         "reminder_sent_at": "TEXT",          # local ISO ts the pre-event reminder went out
+        "mail_sent_at": "TEXT",              # local ISO ts the ticket email last went out
+        "mail_count": "INTEGER DEFAULT 0",   # how often the ticket email was sent
     }
     conn = get_db()
     try:
@@ -848,6 +850,10 @@ def _row_to_ticket(row: sqlite3.Row) -> Dict[str, Any]:
         "sale_id": row["sale_id"] if "sale_id" in keys else None,
         "created_at": row["created_at"] if "created_at" in keys else None,
         "paid_at": row["paid_at"] if "paid_at" in keys else None,
+        # Ticket email bookkeeping; not part of the upsert, so saving a ticket
+        # never resets it.
+        "mail_sent_at": row["mail_sent_at"] if "mail_sent_at" in keys else None,
+        "mail_count": (row["mail_count"] if "mail_count" in keys else None) or 0,
     }
 
 
@@ -1022,6 +1028,28 @@ def unclaim_reminder(tids: list) -> None:
                 "UPDATE tickets SET reminder_sent_at = NULL WHERE tid = ?",
                 [(t,) for t in tids],
             )
+    finally:
+        conn.close()
+
+
+def mark_mail_sent(tid: str, sent_at: str, email: Optional[str] = None) -> None:
+    """Record that the ticket email went out; with `email` the ticket's
+    address is updated too (a corrected typo on resend)."""
+    conn = get_db()
+    try:
+        with conn:
+            if email:
+                conn.execute(
+                    "UPDATE tickets SET mail_sent_at = ?, "
+                    "mail_count = COALESCE(mail_count, 0) + 1, email = ? WHERE tid = ?",
+                    (sent_at, email, tid),
+                )
+            else:
+                conn.execute(
+                    "UPDATE tickets SET mail_sent_at = ?, "
+                    "mail_count = COALESCE(mail_count, 0) + 1 WHERE tid = ?",
+                    (sent_at, tid),
+                )
     finally:
         conn.close()
 
