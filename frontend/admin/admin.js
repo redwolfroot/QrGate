@@ -27,6 +27,7 @@
     up: '<path d="m18 15-6-6-6 6"/>', down: '<path d="m6 9 6 6 6-6"/>', x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
     upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
+    dl: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
   };
   const icon = (k) => '<svg viewBox="0 0 24 24" aria-hidden="true">' + ICON[k] + '</svg>';
 
@@ -758,27 +759,110 @@
     });
   }
 
+  // ---- downloads (backups, exports) ----------------------------------------------------------
+  async function download(url, fallback) {
+    const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+    if (res.status === 401) { location.href = 'login.php'; return; }
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      const err = new Error(j.message || 'HTTP ' + res.status); err.code = j.error; throw err;
+    }
+    const blob = await res.blob();
+    const m = (res.headers.get('Content-Disposition') || '').match(/filename="?([^";]+)"?/);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = m ? m[1] : fallback;
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
   // ---- system ------------------------------------------------------------------------------
+  const BK_KIND = { auto: 'Automatisch', manual: 'Manuell', 'pre-wipe': 'Vor „Daten löschen“', 'pre-reinstall': 'Vor „Neu installieren“', 'pre-factory-reset': 'Vor „Werkseinstellungen“' };
+  const BK_ERR = {
+    no_space: 'Auf dem Server ist nicht genug Speicherplatz frei.',
+    corrupt: 'Die Sicherung war fehlerhaft und wurde verworfen.',
+    failed: 'Die Sicherung konnte nicht geschrieben werden.',
+    not_found: 'Diese Sicherung gibt es nicht mehr.',
+    backup_failed: 'Abgebrochen: Die Sicherung vorher ist fehlgeschlagen. Es wurde nichts geändert.',
+  };
+  const bytes = (n) => n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1).replace('.', ',') + ' MB';
+  function ago(sec) {
+    if (sec < 90) return 'gerade eben';
+    if (sec < 90 * 60) return 'vor ' + Math.round(sec / 60) + ' Minuten';
+    if (sec < 36 * 3600) return 'vor ' + Math.round(sec / 3600) + ' Stunden';
+    return 'vor ' + Math.round(sec / 86400) + ' Tagen';
+  }
+  let bkFilled = false;
+  async function bkLoad() {
+    const r = await proxy('backups_list');
+    if (!r._ok) {
+      $('bkLast').textContent = 'Sicherungen konnten nicht geladen werden.';
+      $('bkRows').innerHTML = '<tr class="adm-empty"><td colspan="4">Backend nicht erreichbar.</td></tr>';
+      return;
+    }
+    const st = r.settings || {};
+    if (!bkFilled) {
+      bkFilled = true;
+      $('bkOn').checked = !!st.enabled; $('bkInt').value = String(st.interval_hours || 24);
+      $('bkKeep').value = st.keep || 14; $('bkEvent').checked = !!st.event_hourly;
+    }
+    const last = $('bkLast');
+    const stale = r.last_age_s == null || r.last_age_s > 2 * (r.effective_interval_hours || 24) * 3600;
+    last.textContent = !st.enabled ? 'Automatische Sicherung ist aus.' + (r.last_age_s != null ? ' Zuletzt gesichert ' + ago(r.last_age_s) + '.' : '')
+      : r.last_age_s == null ? 'Noch keine Sicherung vorhanden.' : 'Zuletzt gesichert ' + ago(r.last_age_s) + '.';
+    last.style.color = !st.enabled ? 'var(--avo-warning)' : stale ? 'var(--avo-error)' : '';
+    const rows = (r.backups || []).map((b) => '<tr><td>' + esc(fmtDate(b.created.slice(0, 10))) + ' · ' + esc(b.created.slice(11, 16)) + '<span class="adm-sub">' + esc(ago(b.age_s)) + '</span></td>'
+      + '<td>' + esc(BK_KIND[b.kind] || b.kind) + '</td><td class="num">' + bytes(b.size) + '</td>'
+      + '<td class="adm-rowact"><button type="button" class="adm-iconbtn" data-dl="' + esc(b.name) + '" aria-label="Sicherung herunterladen">' + icon('dl') + '</button>'
+      + '<button type="button" class="adm-iconbtn" data-rm="' + esc(b.name) + '" aria-label="Sicherung löschen">' + icon('trash') + '</button></td></tr>');
+    $('bkRows').innerHTML = rows.join('') || '<tr class="adm-empty"><td colspan="4">Noch keine Sicherungen.</td></tr>';
+    $('bkRows').querySelectorAll('[data-dl]').forEach((b) => b.addEventListener('click', async () => {
+      busyBtn(b, true);
+      try { await download('backup.php?name=' + encodeURIComponent(b.dataset.dl), b.dataset.dl); }
+      catch (err) { toast(BK_ERR[err.code] || 'Download fehlgeschlagen: ' + err.message, 'error'); }
+      busyBtn(b, false);
+    }));
+    $('bkRows').querySelectorAll('[data-rm]').forEach((b) => b.addEventListener('click', async () => {
+      if (!(await confirmBox('Sicherung löschen?', b.dataset.rm + ' wird endgültig gelöscht.', 'Löschen'))) return;
+      const res = await proxy('backups_delete', { name: b.dataset.rm, confirm: true });
+      if (res._ok) toast('Sicherung gelöscht.'); else toast(BK_ERR[res.error] || res.message || 'Löschen fehlgeschlagen.', 'error');
+      bkLoad();
+    }));
+  }
+
   inits.system = () => {
+    bkLoad();
+    $('bkRun').addEventListener('click', async (e) => {
+      const btn = e.currentTarget; busyBtn(btn, true);
+      const r = await proxy('backups_run', {});
+      busyBtn(btn, false);
+      if (r._ok) toast('Sicherung angelegt.'); else toast(BK_ERR[r.error] || r.message || 'Sicherung fehlgeschlagen.', 'error');
+      bkLoad();
+    });
+    $('bkSave').addEventListener('click', async (e) => {
+      const keep = parseInt($('bkKeep').value, 10);
+      if (!(keep >= 1 && keep <= 100)) { toast('Aufbewahren: eine Zahl zwischen 1 und 100.', 'error'); return; }
+      const btn = e.currentTarget; busyBtn(btn, true);
+      const r = await proxy('show_edit', {
+        backup_enabled: $('bkOn').checked, backup_interval_hours: Number($('bkInt').value),
+        backup_keep: keep, backup_event_hourly: $('bkEvent').checked,
+      });
+      busyBtn(btn, false);
+      if (r._ok) { toast('Backup-Einstellungen gespeichert. Die Aufbewahrung greift bei der nächsten Sicherung.'); bkLoad(); }
+      else toast(r.message || 'Speichern fehlgeschlagen.', 'error');
+    });
     $('backupBtn').addEventListener('click', async (e) => {
       const btn = e.currentTarget; busyBtn(btn, true);
-      try {
-        const res = await fetch('backup.php', { credentials: 'same-origin' });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || 'HTTP ' + res.status);
-        const blob = await res.blob();
-        const m = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob); a.download = m ? m[1] : 'qrgate-backup.db';
-        document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
-        toast('Backup heruntergeladen.');
-      } catch (err) { toast('Backup fehlgeschlagen: ' + err.message, 'error'); }
+      try { await download('backup.php', 'qrgate-backup.db'); toast('Backup heruntergeladen.'); }
+      catch (err) { toast('Backup fehlgeschlagen: ' + err.message, 'error'); }
       busyBtn(btn, false);
     });
     document.querySelectorAll('[data-danger]').forEach((b) => b.addEventListener('click', async () => {
-      const ok = await confirmBox(b.dataset.label + '?', 'Das lässt sich nicht rückgängig machen.', b.dataset.label, b.dataset.word);
+      const ok = await confirmBox(b.dataset.label + '?', 'Das lässt sich nicht rückgängig machen. Vorher wird automatisch gesichert.', b.dataset.label, b.dataset.word);
       if (!ok) return;
+      busyBtn(b, true);
       const r = await action(b.dataset.danger, {});
-      if (!r._ok) { toast(r.message || 'Fehlgeschlagen.', 'error'); return; }
+      busyBtn(b, false);
+      if (!r._ok) { toast(BK_ERR[r.error] || r.message || 'Fehlgeschlagen.', 'error'); bkLoad(); return; }
       toast(r.message || 'Erledigt.');
       if (b.dataset.danger !== 'wipe_data') setTimeout(() => { location.href = '/install'; }, 2000);
       else setTimeout(() => location.reload(), 1500);

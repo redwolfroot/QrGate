@@ -30,6 +30,9 @@ $allowedEndpoints = [
     'broadcast_clear' => '/api/broadcast/clear',
     'broadcast_history' => '/api/broadcast/history',
     'display_token' => '/api/live/display-token',
+    'backups_list' => '/api/admin/backups',
+    'backups_run' => '/api/admin/backups/run',
+    'backups_delete' => '/api/admin/backups/delete',
 ];
 
 $endpoint = $_GET['endpoint'] ?? '';
@@ -56,8 +59,8 @@ if ($method === 'POST') {
     if ($endpoint === 'broadcast_send' && is_array($data)) {
         $data['created_by'] = (string)($_SESSION['username'] ?? 'admin');
     }
-    if (strpos($endpoint, 'broadcast_') === 0) {
-        // Keep the backend's error code (empty_text, no_targets, ...) for the UI.
+    if (strpos($endpoint, 'broadcast_') === 0 || strpos($endpoint, 'backups_') === 0) {
+        // Keep the backend's error code (empty_text, no_space, ...) for the UI.
         [$code, $body] = qrgate_api($allowedEndpoints[$endpoint], 'POST', $data);
         http_response_code($code ?: 502);
         echo json_encode($body ?? ['status' => 'error', 'message' => 'unavailable']);

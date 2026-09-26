@@ -17,18 +17,22 @@ Action semantics (kept deliberately distinct):
   * factory-reset — blank slate: drop every domain table, clear settings, reset
                     accounts to the default admin, and delete generated
                     PDFs/QRs + uploaded images. The system becomes uninstalled.
+
+Every destructive action first writes a pre-<action> backup to the backup
+folder (assets/backup.py) and is aborted if that fails.
 """
 
 import os
 import glob
-import sqlite3
+import asyncio
 import tempfile
 
 import quart
 import hmac
 
 import config.conf as config
-from assets.data import DB_PATH, get_db, init_db
+from assets.data import get_db, init_db
+from assets.backup import BackupError, create_backup, snapshot_db
 from assets.accounts import init_accounts
 from assets.setup import set_setting, get_setting
 from assets.timeutil import local_now
@@ -61,26 +65,34 @@ async def _confirmed() -> bool:
 
 
 def _snapshot_db_bytes() -> bytes:
-    """Return a consistent point-in-time copy of the SQLite database as bytes.
-    Uses the sqlite3 online-backup API so an in-flight WAL write can't produce a
-    torn/half-written file (a plain file read of a WAL db would)."""
-    src = get_db()
+    """Return a consistent point-in-time copy of the SQLite database as bytes
+    (see backup.snapshot_db: a plain file read of a WAL db could be torn)."""
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".db")
     os.close(tmp_fd)
     try:
-        dst = sqlite3.connect(tmp_path)
-        try:
-            src.backup(dst)
-        finally:
-            dst.close()
+        snapshot_db(tmp_path)
         with open(tmp_path, "rb") as fh:
             return fh.read()
     finally:
-        src.close()
         try:
             os.remove(tmp_path)
         except OSError:
             pass
+
+
+async def _backup_before(action: str):
+    """Write a pre-<action> backup. Returns an error response if it failed:
+    a destructive action never runs without a copy to go back to."""
+    try:
+        entry = await asyncio.to_thread(create_backup, f"pre-{action}")
+    except BackupError as e:
+        logger.error(f"Danger zone: {action} aborted, backup failed: {e}")
+        return quart.jsonify({
+            "status": "error", "error": "backup_failed",
+            "message": f"Aborted: the safety backup could not be written ({e}). Nothing was changed.",
+        }), 500
+    logger.info(f"Danger zone: safety backup {entry['name']} written before {action}.")
+    return None
 
 
 def _purge_dir(path: str, patterns=("*",)) -> int:
@@ -127,6 +139,9 @@ def admin_ops(app=quart.Quart):
             return quart.jsonify({"status": "error", "message": "Unauthorized"}), 401
         if not await _confirmed():
             return quart.jsonify({"status": "error", "message": "Confirmation required"}), 400
+        failed = await _backup_before("wipe")
+        if failed:
+            return failed
         conn = get_db()
         try:
             conn.execute("DELETE FROM tickets")
@@ -153,6 +168,9 @@ def admin_ops(app=quart.Quart):
             return quart.jsonify({"status": "error", "message": "Unauthorized"}), 401
         if not await _confirmed():
             return quart.jsonify({"status": "error", "message": "Confirmation required"}), 400
+        failed = await _backup_before("reinstall")
+        if failed:
+            return failed
         # Only clear the install flag — every event/ticket/account stays put.
         conn = get_db()
         try:
@@ -171,6 +189,9 @@ def admin_ops(app=quart.Quart):
             return quart.jsonify({"status": "error", "message": "Unauthorized"}), 401
         if not await _confirmed():
             return quart.jsonify({"status": "error", "message": "Confirmation required"}), 400
+        failed = await _backup_before("factory-reset")
+        if failed:
+            return failed
         conn = get_db()
         try:
             for table in (

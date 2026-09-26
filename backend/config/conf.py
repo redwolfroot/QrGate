@@ -91,6 +91,12 @@ class Auth:
     admin_usernames = _env_list("QRGATE_ADMIN_USERNAMES", ["admin"])             # set real admin usernames
     admin_password = _env("QRGATE_ADMIN_PASSWORD", "CHANGE_ME_admin")              # ROTATE before deployment
 
+class Backup:
+    # Automatic backups (assets/backup.py). Inside the data volume by default;
+    # point it at a mounted NAS/Nextcloud folder to keep copies off the server.
+    dir = _env("QRGATE_BACKUP_DIR", os.path.join("data", "backups"))
+
+
 class Mail:
     smtp_server = _env("QRGATE_SMTP_SERVER", "smtp.example.com")
     smtp_port = int(_env("QRGATE_SMTP_PORT", 587))

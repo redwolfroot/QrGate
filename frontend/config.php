@@ -214,6 +214,78 @@ function qrgate_api($endpoint, $method = 'GET', $data = null)
 }
 
 /**
+ * Stream a file download from the backend straight to the browser without
+ * buffering it in PHP (backups, CSV and PDF exports). The backend's filename
+ * and type are passed through; on an error the backend's JSON message is
+ * returned with the backend's status (or 502 when it is unreachable).
+ */
+function qrgate_stream_download($endpoint, $fallbackName, $fallbackType)
+{
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    $st = ['name' => $fallbackName, 'type' => $fallbackType, 'len' => null, 'code' => 0, 'started' => false, 'err' => ''];
+    $start = function ($ch) use (&$st) {
+        $st['code'] = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        if ($st['code'] !== 200) {
+            return;
+        }
+        $st['started'] = true;
+        header('Content-Type: ' . $st['type']);
+        header('Content-Disposition: attachment; filename="' . $st['name'] . '"');
+        header('Cache-Control: no-store');
+        header('X-Accel-Buffering: no');
+        if ($st['len'] !== null) {
+            header('Content-Length: ' . $st['len']);
+        }
+    };
+    $ch = curl_init(API_BASE_URL . $endpoint);
+    curl_setopt_array($ch, [
+        CURLOPT_HTTPHEADER     => ['Authorization: ' . API_KEY],
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_TIMEOUT        => 300,
+        CURLOPT_HEADERFUNCTION => function ($ch, $line) use (&$st) {
+            if (preg_match('/^Content-Disposition:.*filename="?([A-Za-z0-9._-]+)"?/i', $line, $m)) {
+                $st['name'] = $m[1];
+            } elseif (preg_match('#^Content-Type:\s*([\w.+-]+/[\w.+-]+(?:;\s*charset=[\w-]+)?)#i', $line, $m)) {
+                $st['type'] = $m[1];
+            } elseif (preg_match('/^Content-Length:\s*(\d+)/i', $line, $m)) {
+                $st['len'] = $m[1];
+            }
+            return strlen($line);
+        },
+        CURLOPT_WRITEFUNCTION  => function ($ch, $chunk) use (&$st, $start) {
+            if (!$st['started'] && $st['code'] === 0) {
+                $start($ch);
+            }
+            if ($st['started']) {
+                echo $chunk;
+                flush();
+            } elseif (strlen($st['err']) < 4096) {
+                $st['err'] .= $chunk;
+            }
+            return strlen($chunk);
+        },
+    ]);
+    $ok = curl_exec($ch);
+    if ($ok !== false && $st['code'] === 0) {
+        $start($ch); // empty 200 body
+    }
+    curl_close($ch);
+    if ($st['started']) {
+        return;
+    }
+    $json = json_decode($st['err'], true);
+    http_response_code($st['code'] >= 400 ? $st['code'] : 502);
+    header('Content-Type: application/json');
+    echo json_encode([
+        'status' => 'error',
+        'error' => is_array($json) ? ($json['error'] ?? null) : null,
+        'message' => is_array($json) && !empty($json['message']) ? $json['message'] : 'Download failed (backend returned ' . $st['code'] . ')',
+    ]);
+}
+
+/**
  * The show as the public shop may see it (no payment secrets, seated
  * availability resolved). Null if the backend is unreachable.
  */

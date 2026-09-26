@@ -63,7 +63,7 @@ $boot = [
 
 $pageTitle = 'QrGate · Admin';
 $assetBase = '../';
-$extraHead = '<link rel="stylesheet" href="admin.css?v=9">'
+$extraHead = '<link rel="stylesheet" href="admin.css?v=10">'
     . '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>';
 $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES);
 
@@ -541,14 +541,52 @@ $nav = [
                 <div class="avo-kicker"><span>Wartung</span><i class="rule"></i></div>
                 <h1 class="avo-display-2">Backup & Daten</h1>
             </div>
-            <div class="avo-plate adm-pad adm-row">
-                <div><h2 class="avo-title"><?php echo $svg('down'); ?>Datenbank-Backup</h2>
-                    <p class="avo-small">Vollständige Kopie (Veranstaltung, Tickets, Statistik, Konten, Einstellungen) als <code class="avo-code">.db</code>-Datei. Auch im laufenden Betrieb konsistent.</p></div>
-                <button type="button" class="avo-btn" id="backupBtn"><?php echo $svg('down'); ?><span>Backup herunterladen</span></button>
+            <div class="avo-plate adm-pad adm-form">
+                <div class="adm-row">
+                    <div><h2 class="avo-title"><?php echo $svg('down'); ?>Datenbank-Backup</h2>
+                        <p class="avo-small">Vollständige Kopie (Veranstaltung, Tickets, Statistik, Konten, Einstellungen). Auch im laufenden Betrieb konsistent.</p>
+                        <p class="avo-small" id="bkLast"><span class="avo-loader inline"></span></p></div>
+                    <div class="adm-actions">
+                        <button type="button" class="avo-btn" id="bkRun"><?php echo $svg('save'); ?><span>Jetzt sichern</span></button>
+                        <button type="button" class="avo-btn" id="backupBtn"><?php echo $svg('down'); ?><span>Sofort-Kopie herunterladen</span></button>
+                    </div>
+                </div>
+                <div class="avo-rule"></div>
+                <label class="avo-choice adm-switchrow">
+                    <input type="checkbox" class="avo-switch" id="bkOn">
+                    <span><b>Automatisch sichern</b><span class="avo-help">Der Server legt regelmäßig eine Sicherung im Backup-Ordner ab. Vor „Alle Daten löschen“, „Neu installieren“ und „Werkseinstellungen“ wird immer gesichert.</span></span>
+                </label>
+                <div class="avo-grid c2">
+                    <div class="avo-field"><label class="avo-label" for="bkInt">Intervall</label>
+                        <select class="avo-select" id="bkInt">
+                            <option value="1">Stündlich</option>
+                            <option value="6">Alle 6 Stunden</option>
+                            <option value="12">Alle 12 Stunden</option>
+                            <option value="24">Täglich</option>
+                            <option value="168">Wöchentlich</option>
+                        </select></div>
+                    <div class="avo-field"><label class="avo-label" for="bkKeep">Aufbewahren</label>
+                        <input class="avo-input" type="number" id="bkKeep" min="1" max="100" step="1">
+                        <p class="avo-help">Anzahl automatischer und manueller Sicherungen. Von den Sicherungen vor Gefahrenaktionen bleiben je die letzten 3.</p></div>
+                </div>
+                <label class="avo-choice adm-switchrow">
+                    <input type="checkbox" class="avo-switch" id="bkEvent">
+                    <span><b>An Veranstaltungstagen stündlich</b><span class="avo-help">Gilt an Tagen mit einem Termin, egal welches Intervall eingestellt ist.</span></span>
+                </label>
+                <div class="adm-actions"><button type="button" class="avo-btn primary" id="bkSave"><?php echo $svg('save'); ?><span>Speichern</span></button></div>
             </div>
+            <div class="avo-plate adm-table-plate">
+                <div class="avo-table-scroll">
+                    <table class="avo-table">
+                        <thead><tr><th>Zeitpunkt</th><th>Art</th><th class="num">Größe</th><th></th></tr></thead>
+                        <tbody id="bkRows"><tr><td colspan="4"><span class="avo-loader inline"></span></td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+            <p class="avo-help">Sicherungen liegen als <code class="avo-code">.db.gz</code> im Datenordner unter <code class="avo-code">backups/</code> (änderbar mit <code class="avo-code">QRGATE_BACKUP_DIR</code>). Wiederherstellen geht nur von Hand, siehe <code class="avo-code">docs/backup-wiederherstellen.md</code>. Der API-Schlüssel ist nicht enthalten: Ticket- und Storno-Links funktionieren nach dem Einspielen nur mit demselben Schlüssel.</p>
             <div class="avo-plate avo-status error adm-danger">
                 <div class="adm-pad"><h2 class="avo-title adm-danger__title"><?php echo $svg('alert'); ?>Gefahrenzone</h2>
-                    <p class="avo-small">Diese Aktionen lassen sich nicht rückgängig machen. Lade vorher ein Backup herunter.</p></div>
+                    <p class="avo-small">Diese Aktionen lassen sich nicht rückgängig machen. Vorher wird automatisch eine Sicherung angelegt; schlägt sie fehl, bricht die Aktion ab.</p></div>
                 <?php foreach ([
                     ['wipe_data', 'LÖSCHEN', 'Alle Daten löschen', 'Löscht alle Tickets, Verkäufe und Statistiken. Die Plätze werden auf volle Kapazität gesetzt. Veranstaltung und Konten bleiben.'],
                     ['reinstall', 'INSTALL', 'Neu installieren', 'Startet den Einrichtungsassistenten erneut. Alle Daten bleiben erhalten.'],
@@ -628,6 +666,6 @@ $nav = [
     <div class="avo-toast-stack" id="toasts" aria-live="polite"></div>
 
     <script>window.ADMIN = <?php echo json_encode($boot, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;</script>
-    <script src="admin.js?v=8" defer></script>
+    <script src="admin.js?v=9" defer></script>
 </body>
 </html>

@@ -155,6 +155,7 @@
 .adm-steps li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: var(--avo-space-2); padding: var(--avo-space-2) 0; border-bottom: 1px solid var(--avo-line); }
 .adm-row { display: flex; align-items: center; justify-content: space-between; gap: var(--avo-space-4); flex-wrap: wrap; }
 .adm-row > div { display: flex; flex-direction: column; gap: 4px; max-width: var(--avo-ui-measure); }
+.adm-row > .adm-actions { flex-direction: row; padding-top: 0; max-width: none; }
 .adm-row--line { padding: var(--avo-space-3) var(--avo-ui-pad-plate); border-top: 1px solid var(--avo-line); }
 .adm-danger { padding: 0 !important; }
 .adm-danger > * { color: var(--avo-text); }

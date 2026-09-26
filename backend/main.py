@@ -21,6 +21,7 @@ from assets.image_manager import upload_image, get_image, get_current_images
 from assets.accounts import init_accounts, auth_routes, user_routes
 from assets.setup import init_setup, setup_routes, apply_settings_to_config, is_installed
 from assets.admin_ops import admin_ops
+from assets.backup import backup_routes
 from assets.seatmap import seatmap_routes
 from assets.boxoffice import boxoffice_routes
 from assets.checkout import checkout_routes
@@ -162,6 +163,7 @@ auth_routes(app)
 user_routes(app)
 setup_routes(app)
 admin_ops(app)
+backup_routes(app)
 seatmap_routes(app)
 boxoffice_routes(app)
 checkout_routes(app)

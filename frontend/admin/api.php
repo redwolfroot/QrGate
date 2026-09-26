@@ -652,13 +652,16 @@ function dangerProxy($endpoint) {
         echo json_encode(['status' => 'error', 'message' => 'Method not allowed']);
         return;
     }
-    $result = makeApiCall($endpoint, 'POST', ['confirm' => true]);
-    if (isset($result['status']) && $result['status'] === 'success') {
+    // qrgate_api keeps the backend's message (e.g. "safety backup failed")
+    // and allows for the backup written before the action.
+    [$code, $result] = qrgate_api($endpoint, 'POST', ['confirm' => true]);
+    if ($code === 200 && isset($result['status']) && $result['status'] === 'success') {
         echo json_encode($result);
     } else {
         http_response_code(500);
         echo json_encode([
             'status' => 'error',
+            'error' => $result['error'] ?? null,
             'message' => $result['message'] ?? 'Operation failed',
         ]);
     }

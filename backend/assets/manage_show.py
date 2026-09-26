@@ -4,6 +4,7 @@ from assets.data import load_show, save_show, location_capacity, seat_occupancy
 from assets.data import add_date, update_date, delete_date, merge_dates
 from assets.boxoffice import normalize_categories
 from assets.broadcast import clean_presets
+from assets.backup import INTERVAL_CHOICES, MAX_KEEP
 from reds_simple_logger import Logger
 import os
 import hmac
@@ -98,6 +99,25 @@ def edit_show(app=quart.Quart):
                     show["reminder_days"] = min(7, max(1, int(data["reminder_days"])))
                 except (TypeError, ValueError):
                     return quart.jsonify({"status": "error", "message": "invalid reminder_days"}), 400
+
+            # Automatic backups (see assets/backup.py).
+            if "backup_enabled" in data:
+                show["backup_enabled"] = bool(data["backup_enabled"])
+            if "backup_event_hourly" in data:
+                show["backup_event_hourly"] = bool(data["backup_event_hourly"])
+            if "backup_interval_hours" in data:
+                try:
+                    hours = int(data["backup_interval_hours"])
+                except (TypeError, ValueError):
+                    hours = None
+                if hours not in INTERVAL_CHOICES:
+                    return quart.jsonify({"status": "error", "message": "invalid backup_interval_hours"}), 400
+                show["backup_interval_hours"] = hours
+            if "backup_keep" in data:
+                try:
+                    show["backup_keep"] = min(MAX_KEEP, max(1, int(data["backup_keep"])))
+                except (TypeError, ValueError):
+                    return quart.jsonify({"status": "error", "message": "invalid backup_keep"}), 400
 
             # Quick buttons for announcements (see assets/broadcast.py).
             if "broadcast_presets" in data:

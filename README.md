@@ -44,7 +44,7 @@ QrGate is a comprehensive system for managing events, tickets, and access contro
 - **Announcements**: Send a message from the admin (“Die Pause endet in 5 Minuten”) with a category, duration and audience; on the foyer screens it takes over the whole display in the category style (info blue, attention yellow with warning tape, urgent red and pulsing, notice green) with icon, English line and countdown, and appears as a banner on handhelds and registers. One-click presets, history
 - **Live Dashboard**: `screens/live.php` for a backstage monitor: door ring, seats left, box-office takings today, active scanners, last admits and the running announcement. Opens with a read-only display link from the admin (*Screens*) or an admin session
 - **Admin Panel**: Dashboard for events, dates, locations, images, tickets and statistics, plus a **live door check-in monitor** (checked-in vs. sold, occupancy %, latest scans)
-- **Maintenance & Data Tools**: One-click **database backup** download plus a guarded danger zone (wipe data, reinstall, factory reset)
+- **Maintenance & Data Tools**: **Automatic backups** (interval, retention, hourly on event days, always before a danger-zone action), one-click database backup download plus a guarded danger zone (wipe data, reinstall, factory reset)
 - **Multi-language Support**: German and English
 - **Responsive Design**: Optimized for desktop and mobile, light **and** dark
 
@@ -360,7 +360,7 @@ The admin panel provides the following features:
 - **Image Management**: Upload and manage event images (banner, logo, wallpaper, cast)
 - **Payment Settings**: Configure Stripe keys and the enabled payment methods
 - **Account Management**: Create, edit, and delete user accounts with per-user permissions
-- **Maintenance**: One-click database backup download plus a guarded danger zone (wipe data, reinstall, factory reset)
+- **Maintenance**: Automatic backups (on/off, interval, how many to keep, hourly on event days), the list of stored backups with download and delete, “Jetzt sichern”, one-click database download plus a guarded danger zone (wipe data, reinstall, factory reset). Restoring is manual, see [docs/backup-wiederherstellen.md](docs/backup-wiederherstellen.md)
 - **App Launcher**: Open the Admin, TicketFlow (box office), and Handheld scanner apps per account permissions
 
 ## API Routes
@@ -408,6 +408,9 @@ All `/api/*` routes require the `Authorization: {auth_key}` header, except the p
 | `/api/setup/status`                                       | GET      | Install state (public)                                                                                    |
 | `/api/setup/complete`                                     | POST     | Run the first-run wizard (locks after install)                                                            |
 | `/api/admin/backup`                                       | GET      | Download a SQLite backup                                                                                  |
+| `/api/admin/backups`                                      | GET      | Stored automatic/manual/pre-action backups and the backup settings                                        |
+| `/api/admin/backups/run` \| `/delete`                    | POST     | Back up now / delete one stored backup (`confirm: true`)                                                  |
+| `/api/admin/backups/download?name=`                      | GET      | Download one stored backup (name must be in the listing)                                                  |
 | `/api/admin/wipe-data` \| `/reinstall` | `/factory-reset` | POST     | Danger-zone maintenance                                                                                   |
 
 ## Configuration
@@ -440,6 +443,7 @@ For containerized or 12-factor deployments, every config value can be overridden
 | `QRGATE_ADMIN_USERNAMES` / `QRGATE_TICKETFLOW_USERNAMES` / `QRGATE_HANDHELD_USERNAMES`  | backend            | role usernames for the legacy shared-password login                    |
 | `QRGATE_ADMIN_PASSWORD` / `QRGATE_TICKETFLOW_PASSWORD` / `QRGATE_HANDHELD_PASSWORD`     | backend + frontend | role passwords                                                         |
 | `QRGATE_SMTP_SERVER` / `QRGATE_SMTP_PORT` / `QRGATE_SMTP_USER` / `QRGATE_SMTP_PASSWORD` | backend            | `Mail.*`                                                               |
+| `QRGATE_BACKUP_DIR`                                                                     | backend            | `Backup.dir`, folder for automatic backups (default `data/backups`)    |
 
 ## Contributing
 
