@@ -184,7 +184,7 @@ function makeApiCall($endpoint, $method = 'GET', $data = null)
  * checkout needs to tell "sold out" from "backend down".
  * Returns [int $httpCode, array|null $json].
  */
-function qrgate_api($endpoint, $method = 'GET', $data = null)
+function qrgate_api($endpoint, $method = 'GET', $data = null, $timeout = 30)
 {
     $ch = curl_init(API_BASE_URL . $endpoint);
     $headers = ['Authorization: ' . API_KEY, 'Content-Type: application/json'];
@@ -195,7 +195,7 @@ function qrgate_api($endpoint, $method = 'GET', $data = null)
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_HTTPHEADER     => $headers,
         CURLOPT_CONNECTTIMEOUT => 5,
-        CURLOPT_TIMEOUT        => 30,
+        CURLOPT_TIMEOUT        => $timeout,
     ]);
     if ($method === 'POST') {
         curl_setopt($ch, CURLOPT_POST, true);
@@ -221,8 +221,15 @@ function qrgate_api($endpoint, $method = 'GET', $data = null)
  */
 function qrgate_stream_download($endpoint, $fallbackName, $fallbackType)
 {
+    // A download can take minutes; don't hold the session lock meanwhile, or
+    // every other request of this admin waits for it.
+    session_write_close();
     while (ob_get_level() > 0) {
         ob_end_clean();
+    }
+    $headers = ['Authorization: ' . API_KEY];
+    if (!empty($_SERVER['REMOTE_ADDR'])) {
+        $headers[] = 'X-Forwarded-For: ' . $_SERVER['REMOTE_ADDR'];
     }
     $st = ['name' => $fallbackName, 'type' => $fallbackType, 'len' => null, 'code' => 0, 'started' => false, 'err' => ''];
     $start = function ($ch) use (&$st) {
@@ -241,7 +248,7 @@ function qrgate_stream_download($endpoint, $fallbackName, $fallbackType)
     };
     $ch = curl_init(API_BASE_URL . $endpoint);
     curl_setopt_array($ch, [
-        CURLOPT_HTTPHEADER     => ['Authorization: ' . API_KEY],
+        CURLOPT_HTTPHEADER     => $headers,
         CURLOPT_CONNECTTIMEOUT => 5,
         CURLOPT_TIMEOUT        => 300,
         CURLOPT_HEADERFUNCTION => function ($ch, $line) use (&$st) {

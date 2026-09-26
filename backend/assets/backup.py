@@ -211,7 +211,9 @@ def list_backups() -> List[Dict]:
         e = _entry(name, full)
         if e:
             out.append(e)
-    out.sort(key=lambda e: (e["created"], e["mtime"]), reverse=True)
+    # By write time: the local-time name is not monotonic across the DST
+    # fall-back hour or a timezone change.
+    out.sort(key=lambda e: (e["mtime"], e["created"]), reverse=True)
     return out
 
 
@@ -261,9 +263,13 @@ def create_backup(kind: str = "auto") -> Dict:
     if kind not in KINDS:
         raise ValueError(f"unknown backup kind {kind}")
     with _lock:
-        path = _ensure_dir()
-        _sweep_tmp(path)
-        _check_space(path)
+        try:
+            path = _ensure_dir()
+            _sweep_tmp(path)
+            _check_space(path)
+        except OSError as e:
+            logger.error(f"Backup folder {backup_dir()} not usable: {e}")
+            raise BackupError("failed", f"Backup folder not usable: {e}")
         prefix = "qrgate-" if kind == "auto" else f"qrgate-{kind}-"
         name = prefix + local_now().strftime(_STAMP) + ".db.gz"
         while os.path.exists(os.path.join(path, name)):  # two in one second
@@ -271,11 +277,12 @@ def create_backup(kind: str = "auto") -> Dict:
             name = prefix + local_now().strftime(_STAMP) + ".db.gz"
         final = os.path.join(path, name)
 
-        snap_fd, snap = tempfile.mkstemp(dir=path, prefix=_TMP_PREFIX, suffix=".db.tmp")
-        os.close(snap_fd)
-        gz_fd, gz_tmp = tempfile.mkstemp(dir=path, prefix=_TMP_PREFIX, suffix=".gz.tmp")
-        os.close(gz_fd)
+        snap = gz_tmp = ""
         try:
+            snap_fd, snap = tempfile.mkstemp(dir=path, prefix=_TMP_PREFIX, suffix=".db.tmp")
+            os.close(snap_fd)
+            gz_fd, gz_tmp = tempfile.mkstemp(dir=path, prefix=_TMP_PREFIX, suffix=".gz.tmp")
+            os.close(gz_fd)
             snapshot_db(snap)
             _verify_sqlite(snap)
             raw_size = os.path.getsize(snap)
@@ -296,12 +303,17 @@ def create_backup(kind: str = "auto") -> Dict:
         finally:
             for p in (snap, gz_tmp):
                 try:
-                    os.remove(p)
+                    if p:
+                        os.remove(p)
                 except OSError:
                     pass
-        logger.info(f"Backup written: {name} ({os.path.getsize(final) // 1024} KiB)")
-        prune(backup_settings(load_show())["keep"])
-        return _entry(name, final)
+        entry = _entry(name, final)
+        logger.info(f"Backup written: {name} ({entry['size'] // 1024} KiB)")
+        try:
+            prune(backup_settings(load_show())["keep"])
+        except Exception as e:  # the backup itself is done
+            logger.error(f"Backup retention failed: {e}")
+        return entry
 
 
 def delete_backup(name: str) -> bool:

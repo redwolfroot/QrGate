@@ -767,7 +767,7 @@
   // ---- downloads (backups, exports) ----------------------------------------------------------
   async function download(url, fallback) {
     const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
-    if (res.status === 401) { location.href = 'login.php'; return; }
+    if (res.status === 401) { location.href = 'login.php'; throw new Error('Nicht angemeldet'); }
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
       const err = new Error(j.message || 'HTTP ' + res.status); err.code = j.error; throw err;

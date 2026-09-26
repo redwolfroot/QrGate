@@ -177,7 +177,11 @@ def revenue_rows(tickets: List[Dict], stats: list, f: Fmt) -> List[list]:
             continue
         paid_day = f"{m[1]}-{m[2]}-{m[3]}"
         bucket(paid_day)[2 + _BUCKETS.get(str(t.get("method") or ""), 3)] += price
-        if t.get("status") == "cancelled":
+        # A Stripe refund only counts once Stripe confirmed it (refund_id);
+        # a failed one still has to be done by hand. Cash and card at the
+        # box office are paid back on the spot.
+        refunded = t.get("status") == "cancelled" and (t.get("method") != "stripe" or t.get("refund_id"))
+        if refunded:
             cancel = next((a for a in (t.get("access_attempts") or [])
                            if isinstance(a, dict) and a.get("status") == "cancelled"), None)
             cm = _TS_RE.search(str((cancel or {}).get("time") or ""))
@@ -290,7 +294,7 @@ def export_routes(app: quart.Quart):
             pdf,
             mimetype="application/pdf",
             headers={
-                "Content-Disposition": f'attachment; filename="qrgate-gaesteliste-{date}.pdf"',
+                "Content-Disposition": f'attachment; filename="{export_filename("gaesteliste", date, "pdf")}"',
                 "Content-Length": str(len(pdf)),
                 "Cache-Control": "no-store",
             },
