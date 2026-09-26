@@ -523,5 +523,6 @@ $extraHead = '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/lib
         advanceProgressBar();
         setInterval(switchText, 10000);
     </script>
+<?php include __DIR__ . '/_broadcast.php'; ?>
 </body>
 </html>

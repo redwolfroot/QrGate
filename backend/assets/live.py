@@ -7,6 +7,7 @@ import quart
 from assets.data import checkin_stats, load_date
 from assets.ticket_manager import _authorized
 from assets.timeutil import today_iso
+from assets.broadcast import current as current_broadcast
 from reds_simple_logger import Logger
 
 logger = Logger()
@@ -105,9 +106,10 @@ def live_routes(app: quart.Quart):
         if args.get("device"):
             note_device(args.get("device"), args.get("name"), args.get("role"))
         counts = await asyncio.to_thread(today_counts)
+        broadcast = await asyncio.to_thread(current_broadcast, "staff")
         return quart.jsonify({
             "status": "success",
             **counts,
             "scanners": active_devices(),
-            "broadcast": None,
+            "broadcast": broadcast,
         })

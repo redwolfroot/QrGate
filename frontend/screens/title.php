@@ -375,6 +375,7 @@ $extraHead = '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/lib
         include __DIR__ . '/../partials/footer.php';
         ?>
     </div>
+<?php include __DIR__ . '/_broadcast.php'; ?>
 </body>
 
 </html>

@@ -17,6 +17,8 @@ $allowedEndpoints = [
     // restarts) and generate a random secret key server-side.
     'setup_status'     => '/api/setup/status',
     'setup_genkey'     => '/api/setup/genkey',
+    // Foyer screens: the running announcement (public, read-only).
+    'broadcast'        => '/api/broadcast/active?target=screens',
 ];
 
 $endpoint = $_GET['endpoint'] ?? '';

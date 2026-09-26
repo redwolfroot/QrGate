@@ -26,6 +26,9 @@ $allowedEndpoints = [
     'users_create' => '/api/users/create',
     'users_update' => '/api/users/update',
     'users_delete' => '/api/users/delete',
+    'broadcast_send' => '/api/broadcast/send',
+    'broadcast_clear' => '/api/broadcast/clear',
+    'broadcast_history' => '/api/broadcast/history',
 ];
 
 $endpoint = $_GET['endpoint'] ?? '';
@@ -49,6 +52,9 @@ if ($method === 'POST') {
 
     $input = file_get_contents('php://input');
     $data = json_decode($input, true);
+    if ($endpoint === 'broadcast_send' && is_array($data)) {
+        $data['created_by'] = (string)($_SESSION['username'] ?? 'admin');
+    }
     $result = makeApiCall($allowedEndpoints[$endpoint], 'POST', $data);
 } else {
     $result = makeApiCall($allowedEndpoints[$endpoint]);

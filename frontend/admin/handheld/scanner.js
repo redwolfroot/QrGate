@@ -436,7 +436,9 @@
   // the numbers out and never touches scanning or a verdict.
   var LIVE_MS = 3000, LIVE_HIDDEN_MS = 10000, LIVE_TIMEOUT = 4000;
   var ROLE_LABEL = { scanner: "Einlass", inspector: "Inspector", kasse: "Kasse", ticketflow: "Kasse (PC)" };
+  var CAST_LABEL = { info: "Info", attention: "Achtung", alert: "Dringend", success: "Hinweis" };
   var liveTimer = null, liveBusy = false, liveLast = null;
+  var castId = null, castTimer = null;
 
   // Id and name belong to this tab (sessionStorage: survives reloads and the
   // Scanner/Inspector/Kasse switch), so two tabs on one PC are two scanners.
@@ -473,6 +475,9 @@
     var wrap = document.createElement("div");
     wrap.className = "hh-livebar";
     wrap.innerHTML =
+      '<button type="button" class="hh-cast" id="hhCast" hidden aria-live="assertive">' +
+        '<span class="hh-cast__tag" id="hhCastTag"></span><span class="hh-cast__text" id="hhCastText"></span>' +
+      "</button>" +
       '<button type="button" class="hh-live is-stale" id="hhLive" aria-haspopup="dialog">' +
         '<span class="hh-live__count"><b id="hhLiveIn">&ndash;</b><span class="hh-live__sep">/</span><span id="hhLiveSold">&ndash;</span></span>' +
         '<span class="hh-live__lbl" id="hhLiveLbl">drin</span>' +
@@ -495,6 +500,8 @@
     document.body.appendChild(sheet);
 
     $("hhLive").addEventListener("click", function () { liveSheet(true); });
+    // Tap folds the announcement to one line; it never covers the camera.
+    $("hhCast").addEventListener("click", function () { $("hhCast").classList.toggle("is-folded"); });
     $("hhLiveClose").addEventListener("click", function () { liveSheet(false); });
     sheet.addEventListener("click", function (e) { if (e.target === sheet) liveSheet(false); });
     $("hhLiveSave").addEventListener("click", function () {
@@ -532,6 +539,27 @@
     }).join("") : '<div class="hh-dev__empty">Noch keine Verbindung.</div>';
   }
 
+  // Announcement banner (from the admin), above the counter.
+  function castRender(b) {
+    var el = $("hhCast");
+    if (!el) return;
+    clearTimeout(castTimer);
+    if (!b || !CAST_LABEL[b.category]) { el.hidden = true; castId = null; return; }
+    if (b.id !== castId) {
+      el.classList.remove("is-folded");
+      if (b.category === "attention" || b.category === "alert") vibrate([200, 100, 200]);
+      castId = b.id;
+    }
+    el.dataset.cat = b.category;
+    $("hhCastTag").textContent = CAST_LABEL[b.category];
+    $("hhCastText").textContent = b.text || "";
+    el.hidden = false;
+    // Ends on time even while the poll fails.
+    if (typeof b.expires_in === "number") {
+      castTimer = setTimeout(function () { castRender(null); }, b.expires_in * 1000 + 300);
+    }
+  }
+
   function liveCounts(c) {
     if (!$("hhLive")) return;
     $("hhLiveIn").textContent = c.checked_in;
@@ -550,6 +578,7 @@
       liveCounts(d);
       $("hhLiveLbl").textContent = "drin";
     }
+    castRender(d.broadcast);
     var n = (d.scanners || []).length;
     $("hhLiveDev").textContent = n + (n === 1 ? " Gerät" : " Geräte");
     if ($("hhLiveSheet").classList.contains("show")) liveRenderList();

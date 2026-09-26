@@ -3,6 +3,7 @@ import config.conf as config
 from assets.data import load_show, save_show, location_capacity, seat_occupancy
 from assets.data import add_date, update_date, delete_date, merge_dates
 from assets.boxoffice import normalize_categories
+from assets.broadcast import clean_presets
 from reds_simple_logger import Logger
 import os
 import hmac
@@ -97,6 +98,13 @@ def edit_show(app=quart.Quart):
                     show["reminder_days"] = min(7, max(1, int(data["reminder_days"])))
                 except (TypeError, ValueError):
                     return quart.jsonify({"status": "error", "message": "invalid reminder_days"}), 400
+
+            # Quick buttons for announcements (see assets/broadcast.py).
+            if "broadcast_presets" in data:
+                cleaned = clean_presets(data["broadcast_presets"])
+                if cleaned is None:
+                    return quart.jsonify({"status": "error", "message": "invalid broadcast_presets"}), 400
+                show["broadcast_presets"] = cleaned
 
             # Length of a performance, for the calendar entry (.ics).
             if "event_duration_min" in data:

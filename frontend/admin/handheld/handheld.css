@@ -443,3 +443,25 @@ body {
 .hh-dev__scans b { font-family: var(--avo-font-display); font-size: 1.2rem; }
 .hh-dev__scans span { font-size: 0.65rem; text-transform: uppercase; color: var(--avo-text-muted); }
 .hh-dev__empty { color: var(--avo-text-muted); padding: 12px 0; }
+
+/* announcement banner (admin → staff), part of the live strip */
+.hh-cast {
+  display: flex; align-items: flex-start; gap: 10px;
+  width: 100%; padding: 10px 12px; margin: 0;
+  border: 0; border-radius: var(--avo-radius-md);
+  background: var(--hh-cast-bg); color: var(--hh-cast-fg);
+  font-family: var(--avo-font-body); font-size: 0.98rem; font-weight: 700; line-height: 1.3;
+  text-align: left; cursor: pointer;
+}
+.hh-cast[hidden] { display: none; }
+.hh-cast[data-cat="info"]      { --hh-cast-bg: #1d4ed8; --hh-cast-fg: #fff; }
+.hh-cast[data-cat="attention"] { --hh-cast-bg: #f5b400; --hh-cast-fg: #111; }
+.hh-cast[data-cat="alert"]     { --hh-cast-bg: #c81e1e; --hh-cast-fg: #fff; }
+.hh-cast[data-cat="success"]   { --hh-cast-bg: #15803d; --hh-cast-fg: #fff; }
+.hh-cast__tag {
+  flex-shrink: 0; margin-top: 2px;
+  font-family: var(--avo-font-mono); font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 2px 7px; border: 1.5px solid currentColor; border-radius: 999px;
+}
+.hh-cast__text { min-width: 0; overflow-wrap: anywhere; }
+.hh-cast.is-folded .hh-cast__text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

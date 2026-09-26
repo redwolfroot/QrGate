@@ -85,7 +85,7 @@
   function busyBtn(btn, on) { if (btn) { btn.disabled = on; btn.setAttribute('aria-busy', on ? 'true' : 'false'); } }
 
   // ---- routing ----------------------------------------------------------------
-  const TITLES = { dashboard: 'Dashboard', stats: 'Statistik', event: 'Veranstaltung', dates: 'Termine & Orte', images: 'Bilder', screens: 'Screens', payments: 'Zahlung', accounts: 'Konten', system: 'Wartung' };
+  const TITLES = { dashboard: 'Dashboard', stats: 'Statistik', broadcast: 'Durchsagen', event: 'Veranstaltung', dates: 'Termine & Orte', images: 'Bilder', screens: 'Screens', payments: 'Zahlung', accounts: 'Konten', system: 'Wartung' };
   const inits = {}, started = {};
   function route() {
     let v = location.hash.slice(1);
@@ -99,6 +99,7 @@
     document.title = TITLES[v] + ' · QrGate Admin';
     if (!started[v] && inits[v]) { started[v] = true; inits[v](); }
     if (v === 'dashboard' || v === 'stats' || v === 'dates') pollNow();
+    if (v === 'broadcast' && started.broadcast) castLoad();
     window.scrollTo(0, 0);
   }
   window.addEventListener('hashchange', route);
@@ -233,6 +234,120 @@
     draw('chSales', days.map((d) => sal[d] || 0), v('--avo-coral-700'), (x) => num(x));
   }
   document.addEventListener('avo:theme', () => { if (started.stats) renderStats(); });
+
+  // ---- announcements (Durchsagen) ---------------------------------------------------
+  const CAST_LABEL = { info: 'Info', attention: 'Achtung', alert: 'Dringend', success: 'Hinweis' };
+  const CAST_ERR = { empty_text: 'Bitte einen Text eingeben.', invalid_category: 'Unbekannte Kategorie.', invalid_duration: 'Ungültige Dauer.', no_targets: 'Bitte mindestens eine Zielgruppe wählen.' };
+  let castPresets = [], castTimer = null;
+  const hhmm = (sec) => new Date(sec * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+
+  function castTargets() {
+    return [$('castScreens').checked && 'screens', $('castStaff').checked && 'staff'].filter(Boolean);
+  }
+  async function castSend(text, category, textEn) {
+    const targets = castTargets();
+    if (!text) { toast(CAST_ERR.empty_text, 'error'); return false; }
+    if (!targets.length) { toast(CAST_ERR.no_targets, 'error'); return false; }
+    const dur = $('castDur').value;
+    const r = await proxy('broadcast_send', { category, text, text_en: textEn || '', targets, duration_min: dur ? Number(dur) : null });
+    if (!r._ok) { toast(CAST_ERR[r.message] || r.message || r.error || 'Senden fehlgeschlagen.', 'error'); return false; }
+    toast('Durchsage gesendet: ' + text);
+    castLoad();
+    return true;
+  }
+  async function castLoad() {
+    clearTimeout(castTimer);
+    const r = await proxy('broadcast_history');
+    if (r._ok) {
+      renderCastNow(r.active);
+      renderCastHistory(r.history || [], r.now);
+      if (!castPresets.length && Array.isArray(r.presets)) { castPresets = r.presets.map((p) => Object.assign({}, p)); renderCastPresets(); }
+    }
+    castTimer = setTimeout(() => { if (location.hash.slice(1) === 'broadcast' && !document.hidden) castLoad(); else castTimer = setTimeout(castLoad, 10000); }, 5000);
+  }
+  function renderCastNow(b) {
+    const box = $('castNowBody');
+    if (!b) { box.innerHTML = '<p class="avo-small avo-muted">Keine Durchsage aktiv.</p>'; return; }
+    const left = b.expires_in == null ? 'bis beendet' : 'noch ' + (b.expires_in >= 60 ? Math.ceil(b.expires_in / 60) + ' min' : b.expires_in + ' s');
+    const to = (b.targets || []).map((t) => (t === 'screens' ? 'Screens' : 'Personal')).join(' + ');
+    box.innerHTML = '<div class="adm-castnow__card" data-cat="' + esc(b.category) + '">'
+      + '<span class="adm-casttag">' + esc(CAST_LABEL[b.category] || b.category) + '</span>'
+      + '<div class="adm-castnow__text">' + esc(b.text) + '</div>'
+      + '<div class="adm-castnow__meta"><span class="avo-serial">' + esc(to) + ' · ' + esc(left) + '</span>'
+      + '<button type="button" class="avo-btn compact" id="castClear"><span>Beenden</span></button></div></div>';
+    $('castClear').addEventListener('click', async (e) => {
+      busyBtn(e.currentTarget, true);
+      const res = await proxy('broadcast_clear', {});
+      if (res._ok) toast('Durchsage beendet.'); else toast('Beenden fehlgeschlagen.', 'error');
+      castLoad();
+    });
+  }
+  function renderCastHistory(list, now) {
+    $('castHistory').innerHTML = list.length ? list.map((b) => {
+      const running = !b.cleared_at && (b.expires_at == null || b.expires_at > now);
+      const state = running ? '<span class="adm-state ok">Läuft</span>'
+        : b.cleared_at ? '<span class="adm-state muted">Beendet ' + esc(hhmm(b.cleared_at)) + '</span>'
+          : '<span class="adm-state muted">Abgelaufen ' + esc(hhmm(b.expires_at)) + '</span>';
+      const w = new Date(b.created_at * 1000);
+      const iso = w.getFullYear() + '-' + String(w.getMonth() + 1).padStart(2, '0') + '-' + String(w.getDate()).padStart(2, '0');
+      const day = iso === today ? '' : fmtDate(iso, false) + ' ';
+      return '<tr data-cat="' + esc(b.category) + '"><td class="num" style="text-align:left">' + esc(day + hhmm(b.created_at)) + '<span class="adm-sub">' + esc(b.created_by || '') + '</span></td>'
+        + '<td><span class="adm-casttag">' + esc(CAST_LABEL[b.category] || b.category) + '</span><br><span class="adm-casttext">' + esc(b.text) + '</span></td><td>' + state + '</td></tr>';
+    }).join('') : '<tr class="adm-empty"><td colspan="3">Noch keine Durchsagen.</td></tr>';
+  }
+  function renderCastPresets() {
+    $('castPresets').innerHTML = castPresets.length ? castPresets.map((p, i) =>
+      '<button type="button" class="avo-btn compact" data-cat="' + esc(p.category) + '" data-preset="' + i + '" title="' + esc(p.text) + '"><span>' + esc(p.label) + '</span></button>').join('')
+      : '<p class="avo-help">Keine Schnelltasten.</p>';
+    const list = $('castPresetList');
+    list.innerHTML = castPresets.length ? '<div class="adm-cat adm-cat--head" aria-hidden="true"><span>Knopf</span><span>Kategorie</span><span>Text</span><span></span></div>' : '';
+    castPresets.forEach((p, i) => {
+      const row = document.createElement('div');
+      row.className = 'adm-cat';
+      row.innerHTML = '<input class="avo-input" data-k="label" maxlength="40" placeholder="Beschriftung" aria-label="Beschriftung">'
+        + '<select class="avo-select" data-k="category" aria-label="Kategorie">' + Object.entries(CAST_LABEL).map(([k, t]) => '<option value="' + k + '">' + t + '</option>').join('') + '</select>'
+        + '<input class="avo-input" data-k="text" maxlength="200" placeholder="Text der Durchsage" aria-label="Text">'
+        + '<button type="button" class="adm-iconbtn" aria-label="Schnelltaste entfernen">' + icon('x') + '</button>';
+      row.querySelectorAll('[data-k]').forEach((el) => {
+        el.value = p[el.dataset.k] || (el.dataset.k === 'category' ? 'info' : '');
+        el.addEventListener('input', () => { p[el.dataset.k] = el.value; });
+      });
+      row.querySelector('button').addEventListener('click', () => { castPresets.splice(i, 1); renderCastPresets(); });
+      list.append(row);
+    });
+  }
+  inits.broadcast = () => {
+    const f = $('castForm');
+    $('castText').addEventListener('input', () => { $('castCount').textContent = $('castText').value.length; });
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = f.querySelector('[type=submit]'); busyBtn(btn, true);
+      const ok = await castSend($('castText').value.trim(), f.querySelector('[name=castCat]:checked').value, $('castTextEn').value.trim());
+      busyBtn(btn, false);
+      if (ok) { $('castText').value = ''; $('castTextEn').value = ''; $('castCount').textContent = '0'; }
+    });
+    $('castPresets').addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-preset]');
+      if (!b) return;
+      const p = castPresets[Number(b.dataset.preset)];
+      busyBtn(b, true);
+      await castSend(p.text, p.category, '');
+      busyBtn(b, false);
+    });
+    $('castPresetAdd').addEventListener('click', () => {
+      castPresets.push({ label: '', category: 'info', text: '' });
+      renderCastPresets(); $('castPresetList').querySelector('.adm-cat:last-child input')?.focus();
+    });
+    $('castPresetSave').addEventListener('click', async (e) => {
+      const clean = castPresets.filter((p) => String(p.label || '').trim() && String(p.text || '').trim());
+      busyBtn(e.currentTarget, true);
+      const r = await proxy('show_edit', { broadcast_presets: clean });
+      busyBtn(e.currentTarget, false);
+      if (r._ok) { castPresets = clean; renderCastPresets(); toast('Schnelltasten gespeichert.'); }
+      else toast(r.message || 'Speichern fehlgeschlagen.', 'error');
+    });
+    castLoad();
+  };
 
   // ---- event -----------------------------------------------------------------------
   inits.event = () => {

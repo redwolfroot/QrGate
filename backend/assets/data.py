@@ -172,6 +172,21 @@ def init_db() -> None:
                 expires_at  REAL NOT NULL,
                 result      TEXT                 -- JSON answer once done
             );
+
+            -- Announcements for foyer screens and staff devices. At most one
+            -- is active: sending a new one ends the previous; the rest is
+            -- history. Times are unix seconds.
+            CREATE TABLE IF NOT EXISTS broadcasts (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                category    TEXT NOT NULL,       -- info | attention | alert | success
+                text        TEXT NOT NULL,
+                text_en     TEXT,
+                targets     TEXT DEFAULT '["screens","staff"]',  -- JSON list
+                created_at  REAL NOT NULL,
+                expires_at  REAL,                -- NULL = until ended by hand
+                cleared_at  REAL,
+                created_by  TEXT
+            );
             """
         )
         conn.commit()
@@ -1602,6 +1617,90 @@ def unpaid_ticket_count(email: str) -> int:
     finally:
         conn.close()
     return int(row["n"] or 0)
+
+
+# --------------------------------------------------------------------------- #
+# BROADCASTS (announcements, see assets/broadcast.py)
+# --------------------------------------------------------------------------- #
+def _row_to_broadcast(row: sqlite3.Row) -> Dict[str, Any]:
+    try:
+        targets = json.loads(row["targets"] or "[]")
+    except (ValueError, TypeError):
+        targets = []
+    return {
+        "id": row["id"],
+        "category": row["category"],
+        "text": row["text"],
+        "text_en": row["text_en"] or "",
+        "targets": targets if isinstance(targets, list) else [],
+        "created_at": row["created_at"],
+        "expires_at": row["expires_at"],
+        "cleared_at": row["cleared_at"],
+        "created_by": row["created_by"] or "",
+    }
+
+
+def create_broadcast(category: str, text: str, text_en: str, targets: list,
+                     expires_at: Optional[float], created_by: str, now: float) -> Dict[str, Any]:
+    """Store a new announcement and end any that is still running, in one
+    transaction, so there is never more than one active."""
+    conn = get_db()
+    try:
+        with conn:
+            conn.execute(
+                "UPDATE broadcasts SET cleared_at = ? WHERE cleared_at IS NULL "
+                "AND (expires_at IS NULL OR expires_at > ?)",
+                (now, now),
+            )
+            cur = conn.execute(
+                "INSERT INTO broadcasts (category, text, text_en, targets, created_at, "
+                "expires_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (category, text, text_en or None, json.dumps(targets), now, expires_at, created_by),
+            )
+            row = conn.execute("SELECT * FROM broadcasts WHERE id = ?", (cur.lastrowid,)).fetchone()
+    finally:
+        conn.close()
+    return _row_to_broadcast(row)
+
+
+def clear_broadcasts(now: float) -> int:
+    """End the running announcement. Returns how many were ended (0 or 1)."""
+    conn = get_db()
+    try:
+        with conn:
+            cur = conn.execute(
+                "UPDATE broadcasts SET cleared_at = ? WHERE cleared_at IS NULL "
+                "AND (expires_at IS NULL OR expires_at > ?)",
+                (now, now),
+            )
+            return cur.rowcount
+    finally:
+        conn.close()
+
+
+def active_broadcast(now: float) -> Optional[Dict[str, Any]]:
+    """The running announcement (newest, not ended, not expired) or None."""
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM broadcasts WHERE cleared_at IS NULL "
+            "AND (expires_at IS NULL OR expires_at > ?) ORDER BY id DESC LIMIT 1",
+            (now,),
+        ).fetchone()
+    finally:
+        conn.close()
+    return _row_to_broadcast(row) if row else None
+
+
+def broadcast_history(limit: int = 20) -> list:
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM broadcasts ORDER BY id DESC LIMIT ?", (int(limit),)
+        ).fetchall()
+    finally:
+        conn.close()
+    return [_row_to_broadcast(r) for r in rows]
 
 
 # --------------------------------------------------------------------------- #

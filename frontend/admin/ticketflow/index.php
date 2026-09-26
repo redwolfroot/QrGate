@@ -203,6 +203,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["ajax"])) {
             if ($code === 410) $out = ["status" => "error", "message" => "pair_gone"];
             break;
 
+        case "live":
+            // Announcement banner + heartbeat (this register shows up in the
+            // live device list). The session is not needed any more.
+            session_write_close();
+            $out = makeApiCall("api/live/state?" . http_build_query([
+                "device" => substr(preg_replace('/[^A-Za-z0-9_-]/', '', (string) ($in["device"] ?? "")), 0, 64),
+                "name"   => "Kasse " . $username,
+                "role"   => "ticketflow",
+            ]));
+            if (isset($out["error"])) $out = null;
+            break;
+
         case "resend":
             // Resend the ticket email, optionally to a corrected address
             // (stored on the ticket). Box office and admin alike.
@@ -288,6 +300,7 @@ $T = [
         "mail_hint" => "Eine geänderte Adresse wird am Ticket gespeichert.", "mail_sent" => "Gesendet an",
         "mail_cooldown" => "Gerade erst gesendet. Bitte in {s} s noch einmal.", "mail_smtp" => "Mailserver nicht erreichbar. Das Ticket bleibt unverändert.",
         "mail_noconf" => "Kein Mailserver eingerichtet.", "mail_invalid" => "Ungültige E-Mail-Adresse.", "mail_none" => "Bitte eine E-Mail-Adresse eingeben.",
+        "cast_info" => "Info", "cast_attention" => "Achtung", "cast_alert" => "Dringend", "cast_success" => "Hinweis",
     ],
     "en" => [
         "subtitle" => "Box office", "tab_sell" => "Register", "tab_sales" => "Sales",
@@ -339,6 +352,7 @@ $T = [
         "mail_hint" => "A changed address is saved on the ticket.", "mail_sent" => "Sent to",
         "mail_cooldown" => "Just sent. Please try again in {s} s.", "mail_smtp" => "Mail server unreachable. The ticket is unchanged.",
         "mail_noconf" => "No mail server set up.", "mail_invalid" => "Invalid email address.", "mail_none" => "Please enter an email address.",
+        "cast_info" => "Info", "cast_attention" => "Attention", "cast_alert" => "Urgent", "cast_success" => "Notice",
     ],
 ];
 $L = $T[$lang_code];
@@ -500,6 +514,18 @@ $h = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES);
     .tf-kv dt { color: var(--avo-text-muted); }
     .tf-kv dd { font-weight: 700; word-break: break-word; }
 
+    /* ---- announcement from the admin: top of the sell area, tap folds it ---- */
+    .tf-cast { position: sticky; top: 0; z-index: 5; width: 100%; margin: 0 0 14px; display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; border: 0; border-radius: var(--avo-radius-lg); background: var(--tf-cast-bg); color: var(--tf-cast-fg); font: inherit; font-weight: 800; font-size: 1.05rem; line-height: 1.3; text-align: left; cursor: pointer; box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+    .tf-cast[data-cat="info"] { --tf-cast-bg: #1d4ed8; --tf-cast-fg: #fff; }
+    .tf-cast[data-cat="attention"] { --tf-cast-bg: #f5b400; --tf-cast-fg: #111; }
+    .tf-cast[data-cat="alert"] { --tf-cast-bg: #c81e1e; --tf-cast-fg: #fff; }
+    .tf-cast[data-cat="success"] { --tf-cast-bg: #15803d; --tf-cast-fg: #fff; }
+    .tf-cast .tag { flex-shrink: 0; margin-top: 3px; font-family: var(--avo-font-mono); font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; padding: 2px 8px; border: 1.5px solid currentColor; border-radius: 999px; }
+    .tf-cast .txt { min-width: 0; overflow-wrap: anywhere; }
+    .tf-cast[hidden] { display: none; }
+    .tf-cast.folded { padding: 6px 12px; font-size: .9rem; }
+    .tf-cast.folded .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
     /* ---- toast ---- */
     #tf-toast { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; gap: 8px; width: min(520px, calc(100vw - 24px)); }
     .tf-toastmsg { padding: 12px 18px; border-radius: var(--avo-radius-md); color: #fff; font-weight: 700; box-shadow: 0 6px 20px rgba(0,0,0,.25); animation: avoFadeInUp .25s ease-out; }
@@ -587,6 +613,7 @@ $h = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES);
 <!-- ======================= SELL ======================= -->
 <main class="tf-sell" id="view-sell">
     <section class="tf-products">
+        <button type="button" class="tf-cast" id="tfCast" hidden aria-live="assertive"><span class="tag" id="tfCastTag"></span><span class="txt" id="tfCastText"></span></button>
         <?php if (empty($dateInfo["dates"])): ?>
             <div class="tf-empty"><?php echo $h($L["no_dates"]); ?></div>
         <?php endif; ?>
@@ -1857,6 +1884,41 @@ $("pairEnd").addEventListener("click", async () => {
 });
 document.addEventListener("visibilitychange", () => { if (!document.hidden) pairSchedule(0); });
 pair.load(); renderPair(); pairSchedule(0);
+
+/* =====================================================================
+   Live poll: the admin's announcement as a banner, and this register's
+   heartbeat for the live device list. Display only; failures are silent.
+   ===================================================================== */
+const cast = { id: null, timer: null };
+function tfDevice() {
+    let id = "";
+    try { id = sessionStorage.getItem("tf-device") || ""; } catch (e) {}
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(id)) {
+        id = "tf" + Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, "0")).join("");
+        try { sessionStorage.setItem("tf-device", id); } catch (e) {}
+    }
+    return id;
+}
+function renderCast(b) {
+    const el = $("tfCast");
+    clearTimeout(cast.timer);
+    if (!b || !L["cast_" + b.category]) { el.hidden = true; cast.id = null; return; }
+    if (b.id !== cast.id) { el.classList.remove("folded"); cast.id = b.id; }
+    el.dataset.cat = b.category;
+    $("tfCastTag").textContent = L["cast_" + b.category];
+    $("tfCastText").textContent = b.text || "";
+    el.hidden = false;
+    if (typeof b.expires_in === "number") cast.timer = setTimeout(() => renderCast(null), b.expires_in * 1000 + 300);
+}
+$("tfCast").addEventListener("click", () => $("tfCast").classList.toggle("folded"));
+async function livePoll() {
+    try {
+        const r = await api("live", { device: tfDevice() });
+        if (r && r.status === "success") renderCast(r.broadcast);
+    } catch (e) { /* keep the banner; its timer still ends it on time */ }
+    setTimeout(livePoll, document.hidden ? 10000 : 4000);
+}
+livePoll();
 
 function renderAll() {
     renderCats();

@@ -195,3 +195,32 @@
   .adm-cat > :nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
 }
 
+
+/* ---- announcements (Durchsagen) ---------------------------------------- */
+.adm-stack { display: grid; gap: var(--avo-ui-gap); align-content: start; min-width: 0; }
+.adm-castcats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--avo-space-2); border: 0; padding: 0; margin: 0; }
+.adm-castcats legend { grid-column: 1 / -1; margin-bottom: 6px; }
+.adm-castcats label { position: relative; display: flex; align-items: center; justify-content: center; min-height: var(--avo-ui-control-h, 40px); padding: 6px 8px; border: 1px solid var(--avo-line-strong); border-radius: var(--avo-radius); cursor: pointer; font-family: var(--avo-font-mono); font-size: var(--avo-ui-label); letter-spacing: .08em; text-transform: uppercase; color: var(--avo-text-muted); }
+.adm-castcats label::before { content: ""; width: 8px; height: 8px; margin-right: 8px; background: var(--cast); }
+.adm-castcats input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.adm-castcats label:has(input:checked) { border-color: var(--cast); color: var(--avo-text); box-shadow: inset 0 0 0 1px var(--cast); }
+.adm-castcats label:has(input:focus-visible) { outline: 2px solid var(--avo-primary); outline-offset: 2px; }
+.adm [data-cat="info"] { --cast: #2563eb; }
+.adm [data-cat="attention"] { --cast: #e0a33a; }
+.adm [data-cat="alert"] { --cast: #dc3838; }
+.adm [data-cat="success"] { --cast: #46a758; }
+.adm-castpresets { display: flex; flex-wrap: wrap; gap: var(--avo-space-2); }
+.adm-castpresets .avo-btn { border-left: 3px solid var(--cast); }
+.adm-castedit summary { cursor: pointer; margin-top: var(--avo-space-3); }
+.adm-castedit .adm-cat { grid-template-columns: minmax(0, .8fr) 124px minmax(0, 1.4fr) 28px; }
+@container (max-width: 520px) {
+  .adm-castedit .adm-cat { grid-template-columns: minmax(0, 1fr) 124px 28px; }
+  .adm-castedit .adm-cat [data-k=text] { grid-column: 1 / -1; grid-row: 2; }
+}
+.adm-castnow__card { display: grid; gap: var(--avo-space-3); padding: var(--avo-space-4); border-left: 4px solid var(--cast); background: color-mix(in oklab, var(--cast) 10%, transparent); }
+.adm-castnow__text { font-family: var(--avo-font-display); font-size: 1.35rem; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.adm-castnow__meta { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--avo-space-2); }
+.adm-casttag { display: inline-flex; align-items: center; gap: 6px; font-family: var(--avo-font-mono); font-size: var(--avo-ui-label); letter-spacing: .08em; text-transform: uppercase; }
+.adm-casttag::before { content: ""; width: 7px; height: 7px; background: var(--cast); }
+@media (max-width: 640px) { .adm-castcats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.adm-casttext { overflow-wrap: anywhere; }

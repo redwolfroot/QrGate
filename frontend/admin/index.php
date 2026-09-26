@@ -63,7 +63,7 @@ $boot = [
 
 $pageTitle = 'QrGate · Admin';
 $assetBase = '../';
-$extraHead = '<link rel="stylesheet" href="admin.css?v=8">'
+$extraHead = '<link rel="stylesheet" href="admin.css?v=9">'
     . '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>';
 $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES);
 
@@ -95,11 +95,13 @@ $ico = [
     'tag'   => '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5"/>',
     'alert' => '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
     'menu'  => '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>',
+    'mega'  => '<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
+    'stop'  => '<rect width="14" height="14" x="5" y="5" rx="2"/>',
 ];
 $svg = fn($k, $cls = '') => '<svg viewBox="0 0 24 24" class="' . $cls . '" aria-hidden="true">' . $ico[$k] . '</svg>';
 
 $nav = [
-    ['ÜBERSICHT', [['dashboard', 'Dashboard', 'dash'], ['stats', 'Statistik', 'chart']]],
+    ['ÜBERSICHT', [['dashboard', 'Dashboard', 'dash'], ['stats', 'Statistik', 'chart'], ['broadcast', 'Durchsagen', 'mega']]],
     ['VERANSTALTUNG', [['event', 'Veranstaltung', 'event'], ['dates', 'Termine & Orte', 'cal'], ['images', 'Bilder', 'image'], ['screens', 'Screens', 'screen']]],
     ['SYSTEM', [['payments', 'Zahlung', 'card'], ['accounts', 'Konten', 'users'], ['system', 'Wartung', 'shield']]],
 ];
@@ -210,6 +212,73 @@ $nav = [
                     <div class="adm-live__num"><span class="avo-stat" id="liveIn">–</span><span class="avo-small" id="liveOf"></span></div>
                     <span class="avo-serial" id="liveDate"></span>
                     <ul class="adm-list" id="liveList"></ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================ DURCHSAGEN -->
+        <section class="adm-view" data-view="broadcast" hidden>
+            <div class="adm-head">
+                <div class="avo-kicker"><span>Durchsagen</span><i class="rule"></i></div>
+                <h1 class="avo-display-2">Durchsage senden</h1>
+                <p class="avo-small">Erscheint sofort auf den Foyer-Screens (Vollbild) und auf Einlass-Handys und Kassen (Banner). Es läuft immer nur eine Durchsage; eine neue ersetzt die alte.</p>
+            </div>
+            <div class="adm-cols">
+                <form class="avo-plate adm-pad adm-form" id="castForm" autocomplete="off">
+                    <h2 class="avo-title"><?php echo $svg('mega'); ?>Neue Durchsage</h2>
+                    <div class="avo-field"><label class="avo-label" for="castText">Text <span class="req">*</span></label>
+                        <textarea class="avo-textarea" id="castText" maxlength="200" rows="3" required placeholder="z. B. Die Pause endet in 5 Minuten."></textarea>
+                        <p class="avo-help"><span id="castCount">0</span> / 200 Zeichen, nur Text.</p></div>
+                    <div class="avo-field"><label class="avo-label" for="castTextEn">Englisch (optional, nur Screens)</label>
+                        <input class="avo-input" id="castTextEn" maxlength="200" placeholder="The interval ends in 5 minutes."></div>
+                    <fieldset class="avo-field adm-castcats"><legend class="avo-label">Kategorie</legend>
+                        <label data-cat="info"><input type="radio" name="castCat" value="info" checked><span>Info</span></label>
+                        <label data-cat="attention"><input type="radio" name="castCat" value="attention"><span>Achtung</span></label>
+                        <label data-cat="alert"><input type="radio" name="castCat" value="alert"><span>Dringend</span></label>
+                        <label data-cat="success"><input type="radio" name="castCat" value="success"><span>Hinweis</span></label>
+                    </fieldset>
+                    <div class="avo-grid c2">
+                        <div class="avo-field"><label class="avo-label" for="castDur">Dauer</label>
+                            <select class="avo-select" id="castDur">
+                                <option value="1">1 Minute</option>
+                                <option value="5" selected>5 Minuten</option>
+                                <option value="15">15 Minuten</option>
+                                <option value="">Bis beendet</option>
+                            </select></div>
+                        <fieldset class="avo-field"><legend class="avo-label">Zielgruppe</legend>
+                            <label class="avo-choice"><input type="checkbox" class="avo-check" id="castScreens" checked><span>Foyer-Screens</span></label>
+                            <label class="avo-choice"><input type="checkbox" class="avo-check" id="castStaff" checked><span>Personal (Einlass, Kasse)</span></label>
+                        </fieldset>
+                    </div>
+                    <div class="adm-actions"><button type="submit" class="avo-btn primary"><?php echo $svg('mega'); ?><span>Senden</span></button></div>
+                    <div class="avo-rule"></div>
+                    <h2 class="avo-title"><?php echo $svg('tag'); ?>Schnelltasten</h2>
+                    <p class="avo-small">Ein Klick sendet sofort, mit Dauer und Zielgruppe von oben.</p>
+                    <div class="adm-castpresets" id="castPresets"></div>
+                    <details class="adm-castedit">
+                        <summary class="avo-small">Schnelltasten bearbeiten</summary>
+                        <div id="castPresetList" class="adm-cats"></div>
+                        <div class="adm-actions">
+                            <button type="button" class="avo-btn compact" id="castPresetAdd"><?php echo $svg('plus'); ?><span>Schnelltaste</span></button>
+                            <span class="adm-bar__sp"></span>
+                            <button type="button" class="avo-btn" id="castPresetSave"><?php echo $svg('save'); ?><span>Speichern</span></button>
+                        </div>
+                    </details>
+                </form>
+                <div class="adm-stack">
+                    <div class="avo-plate adm-pad adm-castnow" id="castNow">
+                        <div class="avo-kicker"><span>Läuft gerade</span><i class="rule"></i></div>
+                        <div id="castNowBody"><p class="avo-small avo-muted">Keine Durchsage aktiv.</p></div>
+                    </div>
+                    <div class="avo-plate adm-table-plate">
+                        <div class="avo-toolbar"><span class="avo-kicker"><span>Verlauf</span></span></div>
+                        <div class="avo-table-scroll adm-scroll-y">
+                            <table class="avo-table">
+                                <thead><tr><th>Zeit</th><th>Durchsage</th><th>Status</th></tr></thead>
+                                <tbody id="castHistory"></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -546,6 +615,6 @@ $nav = [
     <div class="avo-toast-stack" id="toasts" aria-live="polite"></div>
 
     <script>window.ADMIN = <?php echo json_encode($boot, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;</script>
-    <script src="admin.js?v=7" defer></script>
+    <script src="admin.js?v=8" defer></script>
 </body>
 </html>
