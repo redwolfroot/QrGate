@@ -35,8 +35,13 @@ QrGate is a comprehensive system for managing events, tickets, and access contro
 - **Self-Service Cancellation**: Every ticket email carries a secure, per-ticket cancel link — the buyer can cancel up to 24 hours before the event, with automatic Stripe refunds for online payments and the seat released back to the pool
 - **Cancellation Email**: Every cancellation (storno link, admin, box office) sends the buyer a confirmation in the ticket-email design, saying what happens to the money: refunded to the card with the amount, refund failed (contact the organiser), paid at the box office, free, or never charged. Internal cancellation reasons are never included
 - **Reminder Email**: Optional reminder 1–7 days before the date (switch + dropdown in the admin under *Veranstaltung*). One email per buyer and date with all their tickets attached as a PDF, sent from 9:00 local time; buyers who booked inside that window are skipped
+- **Calendar Entry**: Ticket and reminder emails carry `event.ics` (time zone aware, 2-hour alarm) and an “Add to calendar” button; a cancellation removes the entry again. The shop's confirmation page links the date's entry. The event length is set under *Veranstaltung*
+- **Resend Ticket Email**: At the box office, send a ticket email again, optionally to a corrected address that is then saved on the ticket (once per ticket every 30 s)
 - **Access Control**: QR code-based ticket validation for entry, with a mobile handheld scanner — a re-scanned (already used) ticket triggers a loud **double-entry alarm** showing when it was first scanned
 - **Register Scanner**: Pair a phone with a TicketFlow register by a 4-digit code (handheld tab “Kasse”); every ticket it scans opens at that register, ready to collect payment for a reservation
+- **Live Door Counter**: Every handheld shows “142 / 230 drin” for today, the same on all devices within seconds, plus the list of active scanners with their names (“Tor 1”) and scan counts
+- **Announcements**: Send a message from the admin (“Die Pause endet in 5 Minuten”) with a category colour, duration and audience; it covers the foyer screens and appears as a banner on handhelds and registers. One-click presets, history
+- **Live Dashboard**: `screens/live.php` for a backstage monitor: door ring, seats left, box-office takings today, active scanners, last admits and the running announcement. Opens with a read-only display link from the admin (*Screens*) or an admin session
 - **Admin Panel**: Dashboard for events, dates, locations, images, tickets and statistics, plus a **live door check-in monitor** (checked-in vs. sold, occupancy %, latest scans)
 - **Maintenance & Data Tools**: One-click **database backup** download plus a guarded danger zone (wipe data, reinstall, factory reset)
 - **Multi-language Support**: German and English
@@ -296,6 +301,7 @@ QrGate/
 │   │   └── seatmap-proxy.php# Admin seat map get/save proxy
 │   ├── checkout.php         # Shop checkout gate: seat map, holds, payment (CSRF + honeypot)
 │   ├── ticket.php           # Token-gated ticket PDF download (email link)
+│   ├── ics.php              # Calendar entry (.ics) for a ticket or a date
 │   ├── cancel.php           # Self-service ticket cancellation page (email link)
 │   ├── cancel-proxy.php     # Token-gated self-cancel proxy (POST only)
 │   ├── help/                # Help pages
@@ -346,6 +352,8 @@ The admin panel provides the following features:
 - **Statistics**: Graphical display of ticket sales and availability
 - **Event Management**: Edit event settings, locations, and screens/projection displays
 - **Reminder Emails**: Turn pre-event reminders on or off and choose 1–7 days before the date
+- **Announcements** (*Durchsagen*): Send, end and review announcements for screens and staff; edit the quick buttons
+- **Live Dashboard Link** (*Screens*): Create, copy or revoke the display link for `screens/live.php`
 - **Seat Map Editor**: Visual per-location hall designer (seats, rows, tables, stage/screen, walls, labels) with fast row/block fill, price categories, and seat auto-numbering
 - **Date Management**: Add, edit, and delete event dates
 - **Image Management**: Upload and manage event images (banner, logo, wallpaper, cast)
