@@ -566,7 +566,39 @@
     { id: 'slide_4', icon: 'fa-ticket', icon_animation: 'wobble 1s infinite', text_en: 'To ensure a quick and smooth check-in,\nplease have your ticket ready before entering.', text_de: 'Um einen zügigen Check-in zu ermöglichen,\nhalte bitte dein Ticket vor dem Einlass bereit.', cast: [] },
   ];
   let SC = null, sel = 0;
+  // ---- live dashboard link (display token) -------------------------------------------
+  function renderDisplay(token) {
+    const url = token ? new URL('../screens/live.php?token=' + encodeURIComponent(token), location.href).href : '';
+    $('dispUrl').value = url;
+    $('dispCopy').disabled = !url;
+    $('dispRevoke').disabled = !url;
+    $('dispOpen').href = url || '../screens/live.php';
+  }
+  async function initDisplay() {
+    const r = await proxy('display_token');
+    if (r._ok) renderDisplay(r.token);
+    $('dispCopy').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText($('dispUrl').value); toast('Link kopiert.'); }
+      catch (e) { $('dispUrl').select(); toast('Link markiert, bitte mit Strg+C kopieren.', 'warn'); }
+    });
+    $('dispNew').addEventListener('click', async (e) => {
+      if ($('dispUrl').value && !(await confirmBox('Neuen Link erzeugen?', 'Der bisherige Link funktioniert danach nicht mehr. Offene Monitore zeigen „Kein Zugriff“, bis sie den neuen Link bekommen.', 'Neu erzeugen'))) return;
+      busyBtn(e.currentTarget, true);
+      const res = await proxy('display_token', { action: 'new' });
+      busyBtn(e.currentTarget, false);
+      if (res._ok) { renderDisplay(res.token); toast('Neuer Link erzeugt.'); } else toast('Erzeugen fehlgeschlagen.', 'error');
+    });
+    $('dispRevoke').addEventListener('click', async (e) => {
+      if (!(await confirmBox('Link zurückziehen?', 'Monitore mit diesem Link zeigen danach „Kein Zugriff“.', 'Zurückziehen'))) return;
+      busyBtn(e.currentTarget, true);
+      const res = await proxy('display_token', { action: 'revoke' });
+      busyBtn(e.currentTarget, false);
+      if (res._ok) { renderDisplay(null); toast('Link zurückgezogen.'); } else toast('Zurückziehen fehlgeschlagen.', 'error');
+    });
+  }
+
   inits.screens = () => {
+    initDisplay();
     SC = S.screens && Array.isArray(S.screens.slides) ? JSON.parse(JSON.stringify(S.screens)) : { language_mode: 'both', slides: JSON.parse(JSON.stringify(DEFAULT_SLIDES)) };
     $('scrLang').value = SC.language_mode || 'both';
     $('scrLang').addEventListener('change', () => { SC.language_mode = $('scrLang').value; });

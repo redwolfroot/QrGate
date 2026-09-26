@@ -1,13 +1,24 @@
 import re
+import hmac
 import time
 import asyncio
+import secrets
 from typing import Dict, Optional
 
 import quart
-from assets.data import checkin_stats, load_date
+from assets.data import (
+    checkin_stats,
+    load_date,
+    load_show,
+    dashboard_overview,
+    recent_checkins,
+    boxoffice_sales,
+    active_broadcast,
+)
 from assets.ticket_manager import _authorized
 from assets.timeutil import today_iso
-from assets.broadcast import current as current_broadcast
+from assets.broadcast import current as current_broadcast, public_view, presets
+from assets.setup import get_setting, set_setting
 from reds_simple_logger import Logger
 
 logger = Logger()
@@ -93,6 +104,80 @@ def today_counts() -> dict:
     }
 
 
+# ---- live dashboard (screens/live.php) ---------------------------------------
+# A backstage monitor cannot log in, so it opens live.php?token=<display
+# token>. The token only reads the dashboard; sending announcements stays with
+# an admin session. Regenerating or revoking it locks old links out at once.
+DISPLAY_TOKEN_KEY = "display_token"
+
+
+def display_token_ok(token) -> bool:
+    stored = get_setting(DISPLAY_TOKEN_KEY) or ""
+    return bool(stored) and bool(token) and hmac.compare_digest(str(token), stored)
+
+
+def _short_name(first, last) -> str:
+    """"Anna K." on a monitor that people walk past, not the full name."""
+    first = str(first or "").strip()
+    last = str(last or "").strip()
+    if first.lower() in ("", "unknown"):
+        first = ""
+    if last.lower() in ("", "unknown"):
+        last = ""
+    return " ".join(x for x in (first, (last[:1] + ".") if last else "") if x)
+
+
+def dashboard_data() -> dict:
+    today = today_iso()
+    show = load_show()
+    ov = dashboard_overview()
+    by_date = ov.get("by_date") or {}
+    stats = checkin_stats()
+    dates = []
+    for d in (show.get("dates") or {}).values():
+        if not isinstance(d, dict) or str(d.get("date") or "") < today:
+            continue
+        st = by_date.get(d["date"]) or {}
+        dates.append({
+            "date": d["date"],
+            "time": d.get("time") or "",
+            "tickets": int(d.get("tickets") or 0),
+            "available": int(d.get("tickets_available") or 0),
+            "sold": int(st.get("sold") or 0),
+            "checked_in": int((stats.get(d["date"]) or {}).get("checked_in") or 0),
+        })
+    dates.sort(key=lambda x: (x["date"], x["time"]))
+    register = [t for t in boxoffice_sales(today)
+                if t.get("status") != "cancelled" and t.get("paid")]
+    recent = []
+    for r in recent_checkins(40):
+        if len(recent) >= 8:
+            break
+        # used_at is "YYYY.MM.DD - HH:MM:SS"; only today's entries count here.
+        if str(r.get("used_at") or "")[:10].replace(".", "-") != today:
+            continue
+        recent.append({
+            "name": _short_name(*(str(r.get("name") or "").split(" ", 1) + [""])[:2]),
+            "seat": r.get("seat_label") or "",
+            "time": str(r.get("used_at") or "")[-8:-3],
+        })
+    now = time.time()
+    b = active_broadcast(now)
+    return {
+        **today_counts(),
+        "dates": dates[:6],
+        "register": {
+            "revenue": round(sum(float(t.get("price") or 0) for t in register), 2),
+            "tickets": len(register),
+        },
+        "recent": recent,
+        "broadcast": {**public_view(b, now), "targets": b["targets"]} if b else None,
+        "presets": presets(show),
+        "title": str(show.get("title") or "").strip(),
+        "orga": str(show.get("orga_name") or "").strip(),
+    }
+
+
 def live_routes(app: quart.Quart):
     @app.route("/api/live/state", methods=["GET"])
     async def live_state():
@@ -113,3 +198,32 @@ def live_routes(app: quart.Quart):
             "scanners": active_devices(),
             "broadcast": broadcast,
         })
+
+    @app.route("/api/live/dashboard", methods=["GET"])
+    async def live_dashboard():
+        """Everything live.php shows. Called by the PHP page with the auth key;
+        for a monitor without an admin session the page forwards its
+        ?display_token, which must then match."""
+        if not _authorized():
+            return quart.jsonify({"status": "error", "message": "Unauthorized"}), 401
+        token = quart.request.args.get("display_token")
+        if token is not None and not await asyncio.to_thread(display_token_ok, token):
+            return quart.jsonify({"status": "error", "message": "invalid_token"}), 403
+        data = await asyncio.to_thread(dashboard_data)
+        return quart.jsonify({"status": "success", **data, "scanners": active_devices()})
+
+    @app.route("/api/live/display-token", methods=["GET", "POST"])
+    async def live_display_token():
+        """GET: the current token (or null). POST {"action":"new"|"revoke"}."""
+        if not _authorized():
+            return quart.jsonify({"status": "error", "message": "Unauthorized"}), 401
+        if quart.request.method == "POST":
+            data = await quart.request.get_json(silent=True) or {}
+            if data.get("action") == "revoke":
+                await asyncio.to_thread(set_setting, DISPLAY_TOKEN_KEY, None)
+            elif data.get("action") == "new":
+                await asyncio.to_thread(set_setting, DISPLAY_TOKEN_KEY, secrets.token_urlsafe(24))
+            else:
+                return quart.jsonify({"status": "error", "message": "invalid_action"}), 400
+        token = await asyncio.to_thread(get_setting, DISPLAY_TOKEN_KEY)
+        return quart.jsonify({"status": "success", "token": token or None})

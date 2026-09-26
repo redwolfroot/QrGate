@@ -457,6 +457,19 @@ $nav = [
                 </div>
                 <div class="avo-plate adm-pad adm-form" id="slideEditor"></div>
             </div>
+            <div class="avo-plate adm-pad adm-form adm-display">
+                <h2 class="avo-title"><?php echo $svg('screen'); ?>Live-Dashboard</h2>
+                <p class="avo-small">Vollbild-Ansicht für den Abend: Einlass, Restplätze, Kasse, aktive Scanner, Durchsage. Ein Monitor ohne Anmeldung öffnet sie mit diesem Link; der Link kann nur lesen. Durchsagen senden geht dort nur mit Admin-Anmeldung.</p>
+                <div class="avo-field"><label class="avo-label" for="dispUrl">Link für den Monitor</label>
+                    <input class="avo-input" id="dispUrl" readonly placeholder="Noch kein Link erzeugt."></div>
+                <div class="adm-actions">
+                    <button type="button" class="avo-btn compact" id="dispCopy" disabled><span>Kopieren</span></button>
+                    <a class="avo-btn compact" id="dispOpen" href="../screens/live.php" target="_blank" rel="noopener"><?php echo $svg('ext'); ?><span>Öffnen</span></a>
+                    <span class="adm-bar__sp"></span>
+                    <button type="button" class="avo-btn compact" id="dispRevoke" disabled><span>Link zurückziehen</span></button>
+                    <button type="button" class="avo-btn" id="dispNew"><?php echo $svg('key'); ?><span>Neuen Link erzeugen</span></button>
+                </div>
+            </div>
         </section>
 
         <!-- ============================================ ZAHLUNG -->

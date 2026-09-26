@@ -224,3 +224,4 @@
 .adm-casttag::before { content: ""; width: 7px; height: 7px; background: var(--cast); }
 @media (max-width: 640px) { .adm-castcats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .adm-casttext { overflow-wrap: anywhere; }
+.adm-display { margin-top: var(--avo-ui-gap); }

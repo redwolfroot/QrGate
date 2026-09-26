@@ -29,6 +29,7 @@ $allowedEndpoints = [
     'broadcast_send' => '/api/broadcast/send',
     'broadcast_clear' => '/api/broadcast/clear',
     'broadcast_history' => '/api/broadcast/history',
+    'display_token' => '/api/live/display-token',
 ];
 
 $endpoint = $_GET['endpoint'] ?? '';
