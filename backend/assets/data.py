@@ -202,6 +202,7 @@ def _migrate_ticket_columns() -> None:
         "sale_id": "TEXT",                   # groups the tickets of one sale
         "created_at": "TEXT",                # local ISO timestamp of creation
         "paid_at": "TEXT",                   # local ISO ts payment was taken at the box office
+        "reminder_sent_at": "TEXT",          # local ISO ts the pre-event reminder went out
     }
     conn = get_db()
     try:
@@ -966,6 +967,60 @@ def save_tickets_bulk(tickets: list) -> None:
             conn.executemany(
                 _TICKET_UPSERT_SQL,
                 [_ticket_params(t["tid"], t) for t in tickets],
+            )
+    finally:
+        conn.close()
+
+
+def reminder_candidates(first_date: str, last_date: str) -> list:
+    """Active tickets with an email for a date in [first_date, last_date] that
+    have not had their pre-event reminder yet."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """
+            SELECT * FROM tickets
+            WHERE reminder_sent_at IS NULL
+              AND COALESCE(status, 'active') = 'active'
+              AND email IS NOT NULL AND TRIM(email) != ''
+              AND valid_date >= ? AND valid_date <= ?
+            ORDER BY valid_date, email, tid
+            """,
+            (first_date, last_date),
+        ).fetchall()
+    finally:
+        conn.close()
+    return [_row_to_ticket(r) for r in rows]
+
+
+def claim_reminder(tids: list, sent_at: str) -> list:
+    """Mark the reminder as sent for those of `tids` still unmarked and return
+    them, so two sweeps can never mail the same ticket twice."""
+    conn = get_db()
+    try:
+        with conn:
+            claimed = []
+            for tid in tids:
+                cur = conn.execute(
+                    "UPDATE tickets SET reminder_sent_at = ? "
+                    "WHERE tid = ? AND reminder_sent_at IS NULL",
+                    (sent_at, tid),
+                )
+                if cur.rowcount:
+                    claimed.append(tid)
+    finally:
+        conn.close()
+    return claimed
+
+
+def unclaim_reminder(tids: list) -> None:
+    """Give a claim back after a send failed, so the next sweep retries."""
+    conn = get_db()
+    try:
+        with conn:
+            conn.executemany(
+                "UPDATE tickets SET reminder_sent_at = NULL WHERE tid = ?",
+                [(t,) for t in tids],
             )
     finally:
         conn.close()

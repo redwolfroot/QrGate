@@ -122,6 +122,17 @@ TICKET_I18N = {
         "cx_refund_counter": "You paid at the box office. The organiser handles the refund with you directly.",
         "cx_refund_free": "This ticket was free, so there is nothing to refund.",
         "cx_refund_none": "This ticket had not been paid yet, so nothing was charged.",
+        # reminder email
+        "rm_right": "Reminder",
+        "rm_subject_1": "Tomorrow: {event}",
+        "rm_subject_n": "In {n} days: {event}, {date}",
+        "rm_head_1": "See you tomorrow.",
+        "rm_head_n": "See you in {n} days.",
+        "rm_intro": "The wait is almost over: your visit to {orga} is just around the corner. We're looking forward to seeing you!",
+        "rm_msg_paid": "Your tickets are attached as a PDF. Show the QR code at the door, on your phone or printed.",
+        "rm_msg_unpaid": "Please pay at the box office before entry. Your tickets are attached as a PDF.",
+        "rm_kicker": "Your visit",
+        "rm_tickets": "Tickets",
     },
     "de": {
         "label_NAME": "Name", "label_DATE": "Datum", "label_TIME": "Beginn",
@@ -170,6 +181,17 @@ TICKET_I18N = {
         "cx_refund_counter": "Du hast an der Kasse bezahlt. Die Erstattung klärt der Veranstalter direkt mit dir.",
         "cx_refund_free": "Das Ticket war kostenlos, es gibt nichts zu erstatten.",
         "cx_refund_none": "Das Ticket war noch nicht bezahlt, es wurde nichts abgebucht.",
+        # Erinnerungs-Mail
+        "rm_right": "Erinnerung",
+        "rm_subject_1": "Morgen: {event}",
+        "rm_subject_n": "In {n} Tagen: {event}, {date}",
+        "rm_head_1": "Morgen ist es so weit.",
+        "rm_head_n": "In {n} Tagen ist es so weit.",
+        "rm_intro": "Bald hat das Warten ein Ende: Dein Besuch bei {orga} steht vor der Tür. Wir freuen uns auf dich!",
+        "rm_msg_paid": "Deine Tickets hängen als PDF an. Zeig den QR-Code am Einlass, auf dem Handy oder ausgedruckt.",
+        "rm_msg_unpaid": "Bitte bezahle vor dem Einlass an der Kasse. Deine Tickets hängen als PDF an.",
+        "rm_kicker": "Dein Besuch",
+        "rm_tickets": "Tickets",
     },
 }
 
@@ -1055,6 +1077,75 @@ async def send_cancel_email(ticket: dict, actor: str, refund_id: Optional[str],
         date=_fmt_ticket_date(date) if date and date != "Unlimited" else "",
     ).rstrip(", ")
     message.attach(MIMEText(html_content, "html", "utf-8"))
+    await _smtp_send(message, email)
+
+
+async def send_reminder_email(tickets: List[dict], days_left: int) -> None:
+    """Remind one buyer of an upcoming date: one email for all their tickets
+    for that date, the tickets attached as a single PDF. Raises on SMTP errors
+    so the caller can retry."""
+    if not tickets:
+        return
+    tickets = sorted(tickets, key=lambda t: str(t["tid"]))
+    email = _clean_recipient(tickets[0].get("email"))
+    if not email:
+        return
+    first = tickets[0]
+    lang = str(first.get("lang") or "en")
+    if lang not in TICKET_I18N:
+        lang = "en"
+    T = _tx(lang)
+    show_data = load_show()
+    view = ticket_view(first["tid"], ticket=first, show_data=show_data)
+    tids = [str(t["tid"]) for t in tickets]
+    seats = [str(t["seat_label"]).strip() for t in tickets if _meaningful(t.get("seat_label"))]
+    any_unpaid = any(not t.get("paid") and str(t.get("type") or "") not in ("admin", "vip")
+                     for t in tickets)
+
+    event_raw = str(show_data.get("orga_name") or "Event")
+    title_raw = str(show_data.get("title") or "").strip()
+    date = view["date"]
+    date_long = ticket_pdf.long_date(date, lang) if date else ""
+    time_long = ticket_pdf.long_time(view["time"], lang) if view["time"] else ""
+
+    grid = _m_grid(_m_details(
+        T, full_name=escape(view["name"]), date_val=escape(date_long),
+        event_time=escape(time_long), seat_label=escape(", ".join(seats)),
+        location_name=escape(view["venue"]), location_address=escape(view["address"]),
+    ) + [_m_field(T["rm_tickets"], "<br>".join(escape(t) for t in tids))])
+    chip = (_m_chip(MAIL_WARNING, T["chip_unpaid"]) if any_unpaid
+            else _m_chip(MAIL_SUCCESS, T["chip_paid"]))
+    headline = (T["rm_head_1"] if days_left == 1
+                else T["rm_head_n"].format(n=days_left))
+    msg = T["rm_msg_unpaid"] if any_unpaid else T["rm_msg_paid"]
+    intro = T["rm_intro"].format(orga=event_raw)
+    card = (_m_status_block(chip, escape(headline),
+                            f"{escape(intro)}<br><br>{escape(msg)}")
+            + _m_event_block(T, T["rm_kicker"], escape(title_raw or event_raw),
+                             escape(str(show_data.get("subtitle") or "").strip()), grid)
+            + '<tr><td style="height:10px;line-height:10px;font-size:0;">&nbsp;</td></tr>')
+    event_name = escape(event_raw)
+    preheader = " · ".join(x for x in (escape(title_raw or event_raw), escape(date_long),
+                                       escape(time_long)) if x)
+    html_content = _mail_page(lang=lang, title=f"{event_name} · {T['rm_right']}",
+                              preheader=preheader, event_name=event_name,
+                              right_label=T["rm_right"], card=card,
+                              contact=escape(view["contact"]))
+
+    subject_tpl = T["rm_subject_1"] if days_left == 1 else T["rm_subject_n"]
+    message = MIMEMultipart("mixed")
+    message["From"] = config.Mail.smtp_user
+    message["To"] = email
+    message["Subject"] = subject_tpl.format(
+        event=title_raw or event_raw, n=days_left, date=_fmt_ticket_date(date),
+    )
+    message.attach(MIMEText(html_content, "html", "utf-8"))
+    pdf_bytes = await asyncio.to_thread(render_ticket_pdf, tids, "standard")
+    if pdf_bytes:
+        part = MIMEApplication(pdf_bytes, _subtype="pdf")
+        name = f"Ticket-{tids[0]}.pdf" if len(tids) == 1 else "Tickets.pdf"
+        part.add_header("Content-Disposition", "attachment", filename=name)
+        message.attach(part)
     await _smtp_send(message, email)
 
 

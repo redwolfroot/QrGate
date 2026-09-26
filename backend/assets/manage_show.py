@@ -89,6 +89,15 @@ def edit_show(app=quart.Quart):
             if "app_domain" in data:
                 show["app_domain"] = str(data["app_domain"]).strip()
 
+            # Pre-event reminder emails (see assets/reminder.py).
+            if "reminder_enabled" in data:
+                show["reminder_enabled"] = bool(data["reminder_enabled"])
+            if "reminder_days" in data:
+                try:
+                    show["reminder_days"] = min(7, max(1, int(data["reminder_days"])))
+                except (TypeError, ValueError):
+                    return quart.jsonify({"status": "error", "message": "invalid reminder_days"}), 400
+
             # Dates are never written back from the loaded show: that would
             # reset availability to what it was a moment ago. A client that
             # still sends a full `dates` dict gets it merged by delta.

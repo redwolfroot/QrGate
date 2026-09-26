@@ -34,6 +34,7 @@ QrGate is a comprehensive system for managing events, tickets, and access contro
 - **Ticket Delivery**: A branded, light-theme ticket email (QR inline, event banner, status, cancel link) with the PDF ticket attached. PDFs are drawn fresh from the stored ticket on every request, so paid state, name and seat are always current — A4 e-ticket with banner and perforated stub, A5 box-office layout, and multi-ticket batch prints; IBM Plex Mono and Syne are embedded (`backend/assets/fonts`, SIL OFL)
 - **Self-Service Cancellation**: Every ticket email carries a secure, per-ticket cancel link — the buyer can cancel up to 24 hours before the event, with automatic Stripe refunds for online payments and the seat released back to the pool
 - **Cancellation Email**: Every cancellation (storno link, admin, box office) sends the buyer a confirmation in the ticket-email design, saying what happens to the money: refunded to the card with the amount, refund failed (contact the organiser), paid at the box office, free, or never charged. Internal cancellation reasons are never included
+- **Reminder Email**: Optional reminder 1–7 days before the date (switch + dropdown in the admin under *Veranstaltung*). One email per buyer and date with all their tickets attached as a PDF, sent from 9:00 local time; buyers who booked inside that window are skipped
 - **Access Control**: QR code-based ticket validation for entry, with a mobile handheld scanner — a re-scanned (already used) ticket triggers a loud **double-entry alarm** showing when it was first scanned
 - **Register Scanner**: Pair a phone with a TicketFlow register by a 4-digit code (handheld tab “Kasse”); every ticket it scans opens at that register, ready to collect payment for a reservation
 - **Admin Panel**: Dashboard for events, dates, locations, images, tickets and statistics, plus a **live door check-in monitor** (checked-in vs. sold, occupancy %, latest scans)
@@ -293,14 +294,14 @@ QrGate/
 │   │   ├── seatmap.php      # Seat map editor UI
 │   │   ├── seatmap-editor.js# Konva-based hall designer
 │   │   └── seatmap-proxy.php# Admin seat map get/save proxy
-│   ├── seat-proxy.php       # Buyer seat availability + hold/release proxy
+│   ├── checkout.php         # Shop checkout gate: seat map, holds, payment (CSRF + honeypot)
+│   ├── ticket.php           # Token-gated ticket PDF download (email link)
 │   ├── cancel.php           # Self-service ticket cancellation page (email link)
 │   ├── cancel-proxy.php     # Token-gated self-cancel proxy (POST only)
 │   ├── help/                # Help pages
 │   ├── screens/             # Event display / projection screens
 │   ├── vote/                # Public audience voting page
 │   ├── docker/              # nginx, php-fpm, supervisor config for the container
-│   ├── buy.php              # Ticket purchase handler
 │   ├── install.php          # First-run setup wizard UI
 │   ├── config.php           # Frontend configuration (env-overridable)
 │   ├── Dockerfile           # Frontend container image (nginx + PHP-FPM)
@@ -319,9 +320,9 @@ QrGate/
 ### Ticket Sales
 
 1. Navigate to the application homepage
-2. Select the desired event
-3. Fill out the form and confirm the purchase
-4. Your ticket will be sent via email or can be downloaded
+2. Pick a date and the number of tickets (or seats on the seat map)
+3. Enter names and email, choose card or pay at the door, accept the booking terms
+4. The tickets arrive by email with the PDF attached; an optional reminder follows before the date
 
 ### Access Control
 
@@ -344,6 +345,7 @@ The admin panel provides the following features:
 - **Live Door Check-in**: Real-time monitor of checked-in vs. sold tickets per date, occupancy %, and the latest scans (auto-refreshing)
 - **Statistics**: Graphical display of ticket sales and availability
 - **Event Management**: Edit event settings, locations, and screens/projection displays
+- **Reminder Emails**: Turn pre-event reminders on or off and choose 1–7 days before the date
 - **Seat Map Editor**: Visual per-location hall designer (seats, rows, tables, stage/screen, walls, labels) with fast row/block fill, price categories, and seat auto-numbering
 - **Date Management**: Add, edit, and delete event dates
 - **Image Management**: Upload and manage event images (banner, logo, wallpaper, cast)

@@ -240,6 +240,9 @@
     $('evOrga').value = S.orga_name || ''; $('evTitle').value = S.title || ''; $('evSub').value = S.subtitle || '';
     $('evMail').value = S.contact_email || ''; $('evDomain').value = S.app_domain || '';
     $('evMethods').value = S.payment_methods || 'both'; $('evLock').checked = !!S.store_lock;
+    $('evRemind').checked = !!S.reminder_enabled; $('evRemindDays').value = String(S.reminder_days || 1);
+    const syncRemind = () => { $('evRemindDays').disabled = !$('evRemind').checked; };
+    $('evRemind').addEventListener('change', syncRemind); syncRemind();
     f.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!$('evOrga').value.trim() || !$('evTitle').value.trim()) { toast('Veranstalter und Titel sind Pflichtfelder.', 'error'); return; }
@@ -248,6 +251,7 @@
         orga_name: $('evOrga').value.trim(), title: $('evTitle').value.trim(), subtitle: $('evSub').value.trim(),
         contact_email: $('evMail').value.trim(), app_domain: $('evDomain').value.trim(),
         payment_methods: $('evMethods').value, store_lock: $('evLock').checked,
+        reminder_enabled: $('evRemind').checked, reminder_days: Number($('evRemindDays').value),
       };
       const r = await proxy('show_edit', body);
       busyBtn(btn, false);

@@ -43,6 +43,8 @@ $boot = [
         'subtitle' => $shows['subtitle'] ?? '',
         'contact_email' => $shows['contact_email'] ?? '',
         'app_domain' => $shows['app_domain'] ?? '',
+        'reminder_enabled' => !empty($shows['reminder_enabled']),
+        'reminder_days' => (int)($shows['reminder_days'] ?? 1),
         'store_lock' => !empty($shows['store_lock']),
         'payment_methods' => $shows['payment_methods'] ?? 'both',
         'locations' => (object)($shows['locations'] ?? []),
@@ -277,6 +279,17 @@ $nav = [
                         <input type="checkbox" class="avo-switch" id="evLock" name="store_lock">
                         <span><b>Shop sperren</b><span class="avo-help">Keine neuen Bestellungen. Laufende Reservierungen können noch abgeschlossen werden.</span></span>
                     </label>
+                    <div class="avo-rule"></div>
+                    <h2 class="avo-title"><?php echo $svg('mail'); ?>Erinnerungs-Mail</h2>
+                    <label class="avo-choice adm-switchrow">
+                        <input type="checkbox" class="avo-switch" id="evRemind" name="reminder_enabled">
+                        <span><b>Erinnerung vor dem Termin senden</b><span class="avo-help">Käufer bekommen eine Mail mit ihren Tickets als PDF, ab 9 Uhr am gewählten Tag. Wer erst in diesem Zeitraum gekauft hat, bekommt keine.</span></span>
+                    </label>
+                    <div class="avo-field"><label class="avo-label" for="evRemindDays">Zeitpunkt</label>
+                        <select class="avo-select" id="evRemindDays" name="reminder_days">
+                            <option value="1">1 Tag vorher</option>
+                            <?php for ($i = 2; $i <= 7; $i++): ?><option value="<?php echo $i; ?>"><?php echo $i; ?> Tage vorher</option><?php endfor; ?>
+                        </select></div>
                     <div class="adm-actions"><button type="submit" class="avo-btn primary"><?php echo $svg('save'); ?><span>Speichern</span></button></div>
                 </form>
 
@@ -527,6 +540,6 @@ $nav = [
     <div class="avo-toast-stack" id="toasts" aria-live="polite"></div>
 
     <script>window.ADMIN = <?php echo json_encode($boot, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;</script>
-    <script src="admin.js?v=5" defer></script>
+    <script src="admin.js?v=6" defer></script>
 </body>
 </html>

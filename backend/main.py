@@ -25,6 +25,7 @@ from assets.seatmap import seatmap_routes
 from assets.boxoffice import boxoffice_routes
 from assets.checkout import checkout_routes
 from assets.scanpair import scanpair_routes
+from assets.reminder import reminder_routes
 from config import conf as config
 from assets.timeutil import local_now
 
@@ -155,6 +156,7 @@ seatmap_routes(app)
 boxoffice_routes(app)
 checkout_routes(app)
 scanpair_routes(app)
+reminder_routes(app)
 logger.success("Systems enabled.")
 
 qr_gate = """
