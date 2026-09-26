@@ -4,6 +4,7 @@ import hmac
 import time
 import secrets
 import sqlite3
+import unicodedata
 import quart
 import config.conf as config
 from werkzeug.security import safe_join
@@ -1286,6 +1287,51 @@ def boxoffice_sales(day: str, seller: Optional[str] = None) -> list:
     finally:
         conn.close()
     return [_row_to_ticket(r) for r in rows]
+
+
+def export_tickets(date: Optional[str] = None, include_cancelled: bool = False) -> list:
+    """Tickets for the CSV export and the guest list: all of them, or those of
+    one date (`valid_date`, which may also be "Unlimited"). Sorted by date,
+    then by name the way a German reader expects (see name_sort_key)."""
+    sql = "SELECT * FROM tickets"
+    where, args = [], []
+    if date:
+        where.append("valid_date = ?")
+        args.append(date)
+    if not include_cancelled:
+        where.append("(status IS NULL OR status <> 'cancelled')")
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    conn = get_db()
+    try:
+        rows = conn.execute(sql, args).fetchall()
+    finally:
+        conn.close()
+    tickets = [_row_to_ticket(r) for r in rows]
+    tickets.sort(key=lambda t: (
+        str(t.get("valid_date") or ""),
+        name_sort_key(t.get("last_name")), name_sort_key(t.get("first_name")),
+        str(t.get("tid") or ""),
+    ))
+    return tickets
+
+
+def name_sort_key(name: Optional[str]) -> str:
+    """Case- and accent-insensitive sort key: "Öztürk" sorts with "Oz", not
+    after "Z" (DIN 5007-1). SQLite's NOCASE only folds ASCII."""
+    s = unicodedata.normalize("NFKD", str(name or "").strip())
+    return "".join(c for c in s if not unicodedata.combining(c)).casefold()
+
+
+def daily_stats_rows() -> list:
+    """[(day, sales, income)] from the sales statistics, oldest first. A day
+    is the day of the sale (or refund), not the performance date."""
+    conn = get_db()
+    try:
+        rows = conn.execute("SELECT date, sales, income FROM daily_stats ORDER BY date").fetchall()
+    finally:
+        conn.close()
+    return [(r["date"], r["sales"] or 0, r["income"] or 0.0) for r in rows]
 
 
 def search_tickets(q: str, limit: int = 25) -> list:

@@ -22,6 +22,7 @@ from assets.accounts import init_accounts, auth_routes, user_routes
 from assets.setup import init_setup, setup_routes, apply_settings_to_config, is_installed
 from assets.admin_ops import admin_ops
 from assets.backup import backup_routes
+from assets.export import export_routes
 from assets.seatmap import seatmap_routes
 from assets.boxoffice import boxoffice_routes
 from assets.checkout import checkout_routes
@@ -69,6 +70,7 @@ _RATE_LIMITS = {
     "/api/vote": (10, 60),
     "/codes/": (60, 60),                 # PDF/QR fetches
     "/api/admin/": (20, 60),             # backup + danger-zone maintenance ops
+    "/api/export/": (30, 60),            # CSV/PDF exports, human-paced
     "/api/seat/hold": (30, 60),          # checkout seat holds, human-paced
     # Online checkout, per buyer IP (the PHP frontend forwards it). A real
     # buyer needs one start and one complete per order.
@@ -164,6 +166,7 @@ user_routes(app)
 setup_routes(app)
 admin_ops(app)
 backup_routes(app)
+export_routes(app)
 seatmap_routes(app)
 boxoffice_routes(app)
 checkout_routes(app)

@@ -101,7 +101,7 @@ $ico = [
 $svg = fn($k, $cls = '') => '<svg viewBox="0 0 24 24" class="' . $cls . '" aria-hidden="true">' . $ico[$k] . '</svg>';
 
 $nav = [
-    ['ÜBERSICHT', [['dashboard', 'Dashboard', 'dash'], ['stats', 'Statistik', 'chart'], ['broadcast', 'Durchsagen', 'mega']]],
+    ['ÜBERSICHT', [['dashboard', 'Dashboard', 'dash'], ['stats', 'Statistik', 'chart'], ['broadcast', 'Durchsagen', 'mega'], ['export', 'Export', 'down']]],
     ['VERANSTALTUNG', [['event', 'Veranstaltung', 'event'], ['dates', 'Termine & Orte', 'cal'], ['images', 'Bilder', 'image'], ['screens', 'Screens', 'screen']]],
     ['SYSTEM', [['payments', 'Zahlung', 'card'], ['accounts', 'Konten', 'users'], ['system', 'Wartung', 'shield']]],
 ];
@@ -309,6 +309,39 @@ $nav = [
                     </table>
                 </div>
             </div>
+        </section>
+
+        <!-- ============================================ EXPORT -->
+        <section class="adm-view" data-view="export" hidden>
+            <div class="adm-head">
+                <div class="avo-kicker"><span>Export</span><i class="rule"></i></div>
+                <h1 class="avo-display-2">Daten herunterladen</h1>
+            </div>
+            <form class="avo-plate adm-pad adm-form" id="exForm">
+                <h2 class="avo-title"><?php echo $svg('down'); ?>CSV-Export</h2>
+                <p class="avo-small">Für Buchhaltung, Abrechnung und Auswertung. Öffnet sich direkt in Excel oder LibreOffice.</p>
+                <div class="avo-grid c2">
+                    <div class="avo-field"><label class="avo-label" for="exKind">Inhalt</label>
+                        <select class="avo-select" id="exKind">
+                            <option value="tickets">Tickets (eine Zeile pro Ticket)</option>
+                            <option value="attempts">Einlass-Log (eine Zeile pro Scan)</option>
+                            <option value="revenue">Umsatz je Tag</option>
+                        </select></div>
+                    <div class="avo-field"><label class="avo-label" for="exDate">Termin</label>
+                        <select class="avo-select" id="exDate"></select></div>
+                </div>
+                <p class="avo-help" id="exHelp"></p>
+                <label class="avo-choice adm-switchrow" id="exCancelRow">
+                    <input type="checkbox" class="avo-switch" id="exCancel">
+                    <span><b>Stornierte einschließen</b><span class="avo-help">Mit Status „storniert“ und Erstattungs-ID.</span></span>
+                </label>
+                <div class="avo-field"><label class="avo-label" for="exFormat">Format</label>
+                    <select class="avo-select" id="exFormat">
+                        <option value="excel">Excel / LibreOffice (Semikolon, Dezimalkomma)</option>
+                        <option value="plain">Standard-CSV (Komma, Dezimalpunkt, ISO-Datum)</option>
+                    </select></div>
+                <div class="adm-actions"><button type="submit" class="avo-btn primary"><?php echo $svg('down'); ?><span>Herunterladen</span></button></div>
+            </form>
         </section>
 
         <!-- ============================================ VERANSTALTUNG -->
@@ -666,6 +699,6 @@ $nav = [
     <div class="avo-toast-stack" id="toasts" aria-live="polite"></div>
 
     <script>window.ADMIN = <?php echo json_encode($boot, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;</script>
-    <script src="admin.js?v=9" defer></script>
+    <script src="admin.js?v=10" defer></script>
 </body>
 </html>

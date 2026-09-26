@@ -45,6 +45,7 @@ QrGate is a comprehensive system for managing events, tickets, and access contro
 - **Live Dashboard**: `screens/live.php` for a backstage monitor: door ring, seats left, box-office takings today, active scanners, last admits and the running announcement. Opens with a read-only display link from the admin (*Screens*) or an admin session
 - **Admin Panel**: Dashboard for events, dates, locations, images, tickets and statistics, plus a **live door check-in monitor** (checked-in vs. sold, occupancy %, latest scans)
 - **Maintenance & Data Tools**: **Automatic backups** (interval, retention, hourly on event days, always before a danger-zone action), one-click database backup download plus a guarded danger zone (wipe data, reinstall, factory reset)
+- **CSV Export**: Tickets, the door scan log and revenue per day (by payment method, refunds, net) for bookkeeping; opens directly in Excel/LibreOffice, safe against formula injection
 - **Multi-language Support**: German and English
 - **Responsive Design**: Optimized for desktop and mobile, light **and** dark
 
@@ -352,6 +353,7 @@ The admin panel provides the following features:
 - **Live Door Check-in**: Real-time monitor of checked-in vs. sold tickets per date, occupancy %, and the latest scans (auto-refreshing)
 - **Statistics**: Graphical display of ticket sales and availability
 - **Event Management**: Edit event settings, locations, and screens/projection displays
+- **Export**: Download tickets (per date, optionally with cancellations), the door scan log or revenue per day as CSV, in Excel format (semicolon, decimal comma, UTF-8 BOM) or standard CSV
 - **Reminder Emails**: Turn pre-event reminders on or off and choose 1–7 days before the date
 - **Announcements** (*Durchsagen*): Send, end and review announcements for screens and staff; edit the quick buttons
 - **Live Dashboard Link** (*Screens*): Create, copy or revoke the display link for `screens/live.php`
@@ -412,6 +414,7 @@ All `/api/*` routes require the `Authorization: {auth_key}` header, except the p
 | `/api/admin/backups/run` \| `/delete`                    | POST     | Back up now / delete one stored backup (`confirm: true`)                                                  |
 | `/api/admin/backups/download?name=`                      | GET      | Download one stored backup (name must be in the listing)                                                  |
 | `/api/admin/wipe-data` \| `/reinstall` | `/factory-reset` | POST     | Danger-zone maintenance                                                                                   |
+| `/api/export/tickets.csv` \| `/attempts.csv` \| `/revenue.csv` | GET | CSV exports (`date`, `include_cancelled`, `format=excel\|plain`)                                        |
 
 ## Configuration
 

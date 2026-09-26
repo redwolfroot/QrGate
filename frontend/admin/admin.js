@@ -86,7 +86,7 @@
   function busyBtn(btn, on) { if (btn) { btn.disabled = on; btn.setAttribute('aria-busy', on ? 'true' : 'false'); } }
 
   // ---- routing ----------------------------------------------------------------
-  const TITLES = { dashboard: 'Dashboard', stats: 'Statistik', broadcast: 'Durchsagen', event: 'Veranstaltung', dates: 'Termine & Orte', images: 'Bilder', screens: 'Screens', payments: 'Zahlung', accounts: 'Konten', system: 'Wartung' };
+  const TITLES = { dashboard: 'Dashboard', stats: 'Statistik', broadcast: 'Durchsagen', export: 'Export', event: 'Veranstaltung', dates: 'Termine & Orte', images: 'Bilder', screens: 'Screens', payments: 'Zahlung', accounts: 'Konten', system: 'Wartung' };
   const inits = {}, started = {};
   function route() {
     let v = location.hash.slice(1);
@@ -774,6 +774,36 @@
     document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
+
+  // ---- export ------------------------------------------------------------------------------
+  const EX_HELP = {
+    tickets: 'Name, E-Mail, Typ, Termin, Platz, Zahlart, Preis, Verkäufer, Kauf- und Einlasszeit, Status.',
+    attempts: 'Jeder Scan am Einlass mit Zeit und Ergebnis (Einlass, bereits benutzt, nicht bezahlt, falscher Tag).',
+    revenue: 'Eine Zeile pro Tag: Verkaufsstatistik, Einnahmen nach Zahlart (bar, Karte, online), Erstattungen und netto. Gilt für alle Termine.',
+  };
+  inits.export = () => {
+    $('exDate').innerHTML = '<option value="">Alle Termine</option>'
+      + (S.dates || []).map((d) => '<option value="' + esc(d.date) + '">' + esc(fmtDate(d.date)) + ' · ' + esc(d.time) + '</option>').join('')
+      + '<option value="Unlimited">Ohne Termin (Admin/VIP)</option>';
+    const sync = () => {
+      const k = $('exKind').value;
+      $('exHelp').textContent = EX_HELP[k];
+      $('exDate').disabled = k === 'revenue';
+      $('exCancelRow').hidden = k !== 'tickets';
+    };
+    $('exKind').addEventListener('change', sync); sync();
+    $('exForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const k = $('exKind').value;
+      const q = new URLSearchParams({ kind: k, format: $('exFormat').value });
+      if (k !== 'revenue' && $('exDate').value) q.set('date', $('exDate').value);
+      if (k === 'tickets' && $('exCancel').checked) q.set('include_cancelled', '1');
+      const btn = e.submitter; busyBtn(btn, true);
+      try { await download('export.php?' + q, 'qrgate-' + k + '.csv'); toast('Export heruntergeladen.'); }
+      catch (err) { toast('Export fehlgeschlagen: ' + err.message, 'error'); }
+      busyBtn(btn, false);
+    });
+  };
 
   // ---- system ------------------------------------------------------------------------------
   const BK_KIND = { auto: 'Automatisch', manual: 'Manuell', 'pre-wipe': 'Vor „Daten löschen“', 'pre-reinstall': 'Vor „Neu installieren“', 'pre-factory-reset': 'Vor „Werkseinstellungen“' };
