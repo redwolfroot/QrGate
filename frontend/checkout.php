@@ -152,7 +152,11 @@ function checked_order(array $in)
         'last_name'  => $last,
         'email'      => $email,
         'add_people' => array_slice($extra, 0, 9),
-        'lang'       => ($in['lang'] ?? '') === 'de' ? 'de' : 'en',
+        // The language the buyer chose in the shop (session) decides the
+        // language of their emails and PDFs; the client value is a fallback.
+        'lang'       => in_array($_SESSION['language'] ?? '', ['de', 'en'], true)
+            ? $_SESSION['language']
+            : (($in['lang'] ?? '') === 'de' ? 'de' : 'en'),
     ];
 }
 

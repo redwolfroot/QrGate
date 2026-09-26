@@ -2,18 +2,23 @@
 require_once 'config.php';
 
 // ---- language: explicit choice (POST / ?lang) > session > browser ----------
+// The buyer's choice is stored on the ticket, so emails and PDFs follow it.
+// Until they have chosen, the page asks on load (browser language preselected).
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['language'])) {
     $_SESSION['language'] = $_POST['language'] === 'de' ? 'de' : 'en';
+    $_SESSION['language_chosen'] = true;
     header('Location: index.php');
     exit();
 }
 if (isset($_GET['lang']) && in_array($_GET['lang'], ['de', 'en'], true)) {
     $_SESSION['language'] = $_GET['lang'];
+    $_SESSION['language_chosen'] = true;
 }
 if (empty($_SESSION['language'])) {
     $_SESSION['language'] = stripos($_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? '', 'de') === 0 ? 'de' : 'en';
 }
 $lang = $_SESSION['language'] === 'de' ? 'de' : 'en';
+$askLang = empty($_SESSION['language_chosen']);
 $de = $lang === 'de';
 
 $T = [
@@ -176,7 +181,7 @@ $orga = $show['orga_name'] ?? '';
 $pageTitle = ($orga !== '' ? $orga . ' · ' : '') . 'Tickets';
 $assetBase = '';
 $extraHead = '<meta name="csrf-token" content="' . htmlspecialchars($csrf, ENT_QUOTES) . '">'
-    . '<link rel="stylesheet" href="assets/shop.css?v=6">';
+    . '<link rel="stylesheet" href="assets/shop.css?v=7">';
 if ($show && in_array('card', $show['methods'] ?? [], true)) {
     $extraHead .= '<script src="https://js.stripe.com/v3/" defer></script>';
 }
@@ -537,5 +542,26 @@ $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES);
         ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
     </script>
     <script src="assets/shop.js?v=2" defer></script>
+
+    <?php if ($askLang): ?>
+    <dialog id="langAsk" class="avo-dialog lang-ask" aria-labelledby="langAskTitle">
+        <form method="post" class="lang-ask__in">
+            <h2 id="langAskTitle" class="co-title">Sprache wählen · Choose language</h2>
+            <p class="avo-small">Deine Tickets und E-Mails bekommst du in dieser Sprache.<br>Your tickets and emails will be in this language.</p>
+            <div class="lang-ask__opts">
+                <button name="language" value="de" class="avo-btn<?php echo $de ? ' primary' : ''; ?>"<?php echo $de ? ' autofocus' : ''; ?>>Deutsch</button>
+                <button name="language" value="en" class="avo-btn<?php echo $de ? '' : ' primary'; ?>"<?php echo $de ? '' : ' autofocus'; ?>>English</button>
+            </div>
+        </form>
+    </dialog>
+    <script>
+        (function () {
+            var d = document.getElementById('langAsk');
+            if (!d || typeof d.showModal !== 'function') return;
+            d.addEventListener('cancel', function (e) { e.preventDefault(); });
+            d.showModal();
+        })();
+    </script>
+    <?php endif; ?>
 </body>
 </html>

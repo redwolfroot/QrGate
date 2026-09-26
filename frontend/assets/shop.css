@@ -88,6 +88,12 @@
 .how-list li, .avo-ui .how-list li { padding: var(--avo-space-4) var(--avo-space-5); display: flex; flex-direction: column; gap: var(--avo-space-2); }
 .shop-links { --avo-gap: var(--avo-space-2); }
 
+/* ---- first-visit language prompt ---------------------------------------- */
+.lang-ask { width: min(440px, calc(100vw - 2rem)); }
+.lang-ask__in { display: flex; flex-direction: column; gap: var(--avo-space-3); text-align: center; }
+.lang-ask__opts { display: grid; grid-template-columns: 1fr 1fr; gap: var(--avo-space-3); margin-top: var(--avo-space-2); }
+.lang-ask__opts .avo-btn { justify-content: center; min-height: var(--avo-ui-control-h-primary, 44px); }
+
 /* ---- checkout dialog ----------------------------------------------------- */
 .co {
   width: min(980px, calc(100vw - 2rem));
