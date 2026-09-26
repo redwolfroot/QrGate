@@ -9,6 +9,7 @@ if (!empty($_SESSION['must_change_pw'])) {
     header('Location: ../change_password.php');
     exit;
 }
+require __DIR__ . '/_live.php';
 
 $API_KEY = API_KEY;
 $API_ENDPOINT = API_BASE_URL . 'api/ticket/validate';
@@ -20,6 +21,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($ticketId) {
         $ch = curl_init($API_ENDPOINT);
         $requestData = json_encode(['tid' => $ticketId]);
+        // Which handheld scanned it: counted per device in the live view.
+        $device = preg_replace('/[^A-Za-z0-9_-]/', '', (string) ($_SERVER['HTTP_X_DEVICE'] ?? ''));
 
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
@@ -27,7 +30,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             CURLOPT_POSTFIELDS => $requestData,
             CURLOPT_HTTPHEADER => [
                 'Content-Type: application/json',
-                'Authorization: ' . $API_KEY
+                'Authorization: ' . $API_KEY,
+                'X-Device: ' . substr($device, 0, 64),
             ]
         ]);
 
@@ -358,7 +362,8 @@ HTML;
             invalidText: 'Ungültig',
             reuseText: 'Bereits eingelöst!',
             reuseHint: 'Zuerst gescannt:',
-            showTimeline: false
+            showTimeline: false,
+            liveRole: 'scanner'
         };
     </script>
     <script src="./scanner.js"></script>

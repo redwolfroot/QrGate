@@ -276,7 +276,7 @@
 
     fetch(window.location.href, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Device": device().id },
       body: JSON.stringify(payload),
       cache: "no-store",
       signal: ctrl ? ctrl.signal : undefined
@@ -313,6 +313,7 @@
         netRecovered(); // a real round-trip proves the door is live again
         // Verdict is decided strictly by the server response.
         var valid = res.data.status === "success";
+        if (valid && res.data.counts) liveCounts(res.data.counts);
         showResult(valid, res.data);
         if (opts.onSettled) opts.onSettled(true);
       })
@@ -429,6 +430,167 @@
     $("hhClock").textContent = d.toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "medium" });
   }
 
+  // ---- live: door counter, active scanners ------------------------------
+  // One poll every few seconds to the page itself (PHP adds the API key),
+  // which is also this device's heartbeat. Display only: a failed poll greys
+  // the numbers out and never touches scanning or a verdict.
+  var LIVE_MS = 3000, LIVE_HIDDEN_MS = 10000, LIVE_TIMEOUT = 4000;
+  var ROLE_LABEL = { scanner: "Einlass", inspector: "Inspector", kasse: "Kasse", ticketflow: "Kasse (PC)" };
+  var liveTimer = null, liveBusy = false, liveLast = null;
+
+  // Id and name belong to this tab (sessionStorage: survives reloads and the
+  // Scanner/Inspector/Kasse switch), so two tabs on one PC are two scanners.
+  // The last name given on this phone (localStorage) is the default.
+  function store(k, v, area) {
+    try {
+      area = area || localStorage;
+      if (v === undefined) return area.getItem(k);
+      area.setItem(k, v);
+    } catch (e) {}
+    return null;
+  }
+  function device() {
+    if (!device._id) {
+      var id = store("qg-device-id", undefined, sessionStorage);
+      if (!id || !/^[A-Za-z0-9_-]{8,64}$/.test(id)) {
+        id = "";
+        var a = new Uint8Array(9);
+        (window.crypto || {}).getRandomValues ? crypto.getRandomValues(a) : a.forEach(function (_, i) { a[i] = Math.random() * 256; });
+        a.forEach(function (b) { id += ("0" + b.toString(16)).slice(-2); });
+        store("qg-device-id", id, sessionStorage);
+      }
+      device._id = id;
+    }
+    return { id: device._id, name: store("qg-device-name", undefined, sessionStorage) || store("qg-device-name") || "" };
+  }
+  function liveRole() {
+    return CFG.liveRole || { validate: "scanner", inspect: "inspector", register: "kasse" }[CFG.mode] || "scanner";
+  }
+
+  function liveMount() {
+    var bar = document.querySelector(".hh-bar");
+    if (!bar || $("hhLive")) return;
+    var wrap = document.createElement("div");
+    wrap.className = "hh-livebar";
+    wrap.innerHTML =
+      '<button type="button" class="hh-live is-stale" id="hhLive" aria-haspopup="dialog">' +
+        '<span class="hh-live__count"><b id="hhLiveIn">&ndash;</b><span class="hh-live__sep">/</span><span id="hhLiveSold">&ndash;</span></span>' +
+        '<span class="hh-live__lbl" id="hhLiveLbl">drin</span>' +
+        '<span class="hh-live__dev" id="hhLiveDev"></span>' +
+      "</button>";
+    bar.parentNode.insertBefore(wrap, bar.nextSibling);
+
+    var sheet = document.createElement("div");
+    sheet.className = "hh-sheet";
+    sheet.id = "hhLiveSheet";
+    sheet.innerHTML =
+      '<div class="hh-sheet__card" role="dialog" aria-modal="true" aria-labelledby="hhLiveTitle">' +
+        '<div class="hh-sheet__head"><h3 id="hhLiveTitle">Aktive Geräte</h3>' +
+        '<button type="button" class="hh-iconbtn" id="hhLiveClose" aria-label="Schließen">&#x2715;</button></div>' +
+        '<div class="hh-sheet__list" id="hhLiveList"></div>' +
+        '<label class="hh-sheet__name"><span>Name dieses Geräts</span>' +
+        '<input id="hhLiveName" class="hh-manual__input" maxlength="40" placeholder="z. B. Tor 1" autocomplete="off"></label>' +
+        '<button type="button" class="hh-bigbtn" id="hhLiveSave">Speichern</button>' +
+      "</div>";
+    document.body.appendChild(sheet);
+
+    $("hhLive").addEventListener("click", function () { liveSheet(true); });
+    $("hhLiveClose").addEventListener("click", function () { liveSheet(false); });
+    sheet.addEventListener("click", function (e) { if (e.target === sheet) liveSheet(false); });
+    $("hhLiveSave").addEventListener("click", function () {
+      var name = ($("hhLiveName").value || "").trim().slice(0, 40);
+      if (name) { store("qg-device-name", name, sessionStorage); store("qg-device-name", name); }
+      liveSheet(false);
+      livePoll();
+    });
+    $("hhLiveName").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); $("hhLiveSave").click(); }
+    });
+  }
+
+  function liveSheet(open) {
+    var sheet = $("hhLiveSheet");
+    if (!sheet) return;
+    sheet.classList.toggle("show", open);
+    if (open) {
+      $("hhLiveName").value = device().name;
+      liveRenderList();
+    }
+  }
+
+  function liveRenderList() {
+    var list = $("hhLiveList");
+    if (!list) return;
+    var me = device().id.slice(0, 8);
+    var devs = (liveLast && liveLast.scanners) || [];
+    list.innerHTML = devs.length ? devs.map(function (d) {
+      return '<div class="hh-dev' + (d.id === me ? " is-me" : "") + '">' +
+        '<span class="hh-dev__dot"></span>' +
+        '<div class="hh-dev__main"><div class="hh-dev__name">' + esc(d.name) + (d.id === me ? " (dieses Gerät)" : "") + "</div>" +
+        '<div class="hh-dev__meta">' + esc(ROLE_LABEL[d.role] || d.role) + " &middot; vor " + d.last_seen_s + " s</div></div>" +
+        '<div class="hh-dev__scans"><b>' + d.scans + "</b><span>Scans</span></div></div>";
+    }).join("") : '<div class="hh-dev__empty">Noch keine Verbindung.</div>';
+  }
+
+  function liveCounts(c) {
+    if (!$("hhLive")) return;
+    $("hhLiveIn").textContent = c.checked_in;
+    $("hhLiveSold").textContent = c.sold;
+  }
+
+  function liveRender(d) {
+    liveLast = d;
+    var el = $("hhLive");
+    if (!el) return;
+    el.classList.remove("is-stale");
+    if (d.event_today === false && !d.sold) {
+      $("hhLiveIn").textContent = "\u2013"; $("hhLiveSold").textContent = "\u2013";
+      $("hhLiveLbl").textContent = "kein Termin heute";
+    } else {
+      liveCounts(d);
+      $("hhLiveLbl").textContent = "drin";
+    }
+    var n = (d.scanners || []).length;
+    $("hhLiveDev").textContent = n + (n === 1 ? " Gerät" : " Geräte");
+    if ($("hhLiveSheet").classList.contains("show")) liveRenderList();
+    if (CFG.onLive) { try { CFG.onLive(d); } catch (e) {} }
+  }
+
+  function liveSchedule() {
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(livePoll, document.hidden ? LIVE_HIDDEN_MS : LIVE_MS);
+  }
+
+  function livePoll() {
+    if (liveBusy) return;
+    liveBusy = true;
+    var dev = device();
+    var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctrl) { try { ctrl.abort(); } catch (e) {} } }, LIVE_TIMEOUT);
+    fetch(window.location.href, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "live", device: dev.id, name: dev.name, role: liveRole() }),
+      cache: "no-store",
+      signal: ctrl ? ctrl.signal : undefined
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (d && d.status === "success") liveRender(d);
+        else if ($("hhLive")) $("hhLive").classList.add("is-stale");
+      })
+      .catch(function () { if ($("hhLive")) $("hhLive").classList.add("is-stale"); })
+      .then(function () { clearTimeout(timer); liveBusy = false; liveSchedule(); });
+  }
+
+  function liveInit() {
+    liveMount();
+    livePoll();
+    document.addEventListener("visibilitychange", function () { if (!document.hidden) livePoll(); });
+    // First start on this device: ask for a name ("Tor 1") once.
+    if (!device().name) setTimeout(function () { liveSheet(true); $("hhLiveName").focus(); }, 600);
+  }
+
   // ---- boot -------------------------------------------------------------
   document.addEventListener("DOMContentLoaded", function () {
     tick(); setInterval(tick, 1000);
@@ -460,11 +622,13 @@
       aa.addEventListener("change", function () { autoAdvance = !!aa.checked; });
     }
 
+    liveInit();
+
     // autostart; if the browser needs a gesture, the start overlay is shown
     if (CFG.autostart !== false) start();
   });
 
-  window.HH = { start: start, toast: toast };
+  window.HH = { start: start, toast: toast, vibrate: vibrate, esc: esc };
 
   window.addEventListener("beforeunload", function () {
     if (scanner) { try { scanner.stop(); } catch (e) {} }

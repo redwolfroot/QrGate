@@ -26,6 +26,7 @@ from assets.boxoffice import boxoffice_routes
 from assets.checkout import checkout_routes
 from assets.scanpair import scanpair_routes
 from assets.reminder import reminder_routes
+from assets.live import live_routes
 from config import conf as config
 from assets.timeutil import local_now
 
@@ -72,6 +73,8 @@ _RATE_LIMITS = {
     "/api/checkout/start": (12, 300),
     "/api/checkout/intent": (15, 300),
     "/api/checkout/complete": (10, 300),
+    # Live poll: every device every ~3 s (the PHP pages forward the client IP).
+    "/api/live/": (120, 60),
     # Handheld joining a register by its 4-digit code: stops code guessing.
     "/api/boxoffice/pair/join": (20, 300),
 }
@@ -159,6 +162,7 @@ boxoffice_routes(app)
 checkout_routes(app)
 scanpair_routes(app)
 reminder_routes(app)
+live_routes(app)
 logger.success("Systems enabled.")
 
 qr_gate = """

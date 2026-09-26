@@ -11,10 +11,24 @@ from assets.data import (
     append_access_attempt,
 )
 from assets.timeutil import local_now
+from assets.live import count_scan, today_counts
 from reds_simple_logger import Logger
 
 logger = Logger()
 logger.success("Validate.py loaded")
+
+
+async def _admitted(body: dict) -> dict:
+    """An admitted guest: count the scan for the device that sent it
+    (X-Device) and hand the fresh door numbers back, so that device shows
+    them at once. Bookkeeping only; a failure here never touches the verdict."""
+    try:
+        count_scan(quart.request.headers.get("X-Device"))
+        c = await asyncio.to_thread(today_counts)
+        body["counts"] = {"checked_in": c["checked_in"], "sold": c["sold"]}
+    except Exception as e:
+        logger.error(f"Live counts after a scan failed: {e}")
+    return body
 
 
 def validate_ticket(app: quart.Quart):
@@ -98,13 +112,13 @@ def validate_ticket(app: quart.Quart):
                 ticket["used_at"] = now_str
                 await asyncio.to_thread(save_tickets, ticket_id, ticket)
                 return (
-                    quart.jsonify(
+                    quart.jsonify(await _admitted(
                         {
                             "status": "success",
                             "message": "Ticket is valid - ADMIN",
                             "data": ticket,
                         }
-                    ),
+                    )),
                     200,
                 )
 
@@ -119,13 +133,13 @@ def validate_ticket(app: quart.Quart):
                 ticket["used_at"] = now_str
                 await asyncio.to_thread(save_tickets, ticket_id, ticket)
                 return (
-                    quart.jsonify(
+                    quart.jsonify(await _admitted(
                         {
                             "status": "success",
                             "message": "Ticket is valid - VIP",
                             "data": ticket,
                         }
-                    ),
+                    )),
                     200,
                 )
 
@@ -229,9 +243,9 @@ def validate_ticket(app: quart.Quart):
             ticket = await asyncio.to_thread(load_ticket_id, ticket_id)
             logger.info(f"Ticket validated: {ticket_id}")
             return (
-                quart.jsonify(
+                quart.jsonify(await _admitted(
                     {"status": "success", "message": "Ticket is valid", "data": ticket}
-                ),
+                )),
                 200,
             )
 

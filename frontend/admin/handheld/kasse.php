@@ -10,6 +10,7 @@ if (!empty($_SESSION['must_change_pw'])) {
     header('Location: ../change_password.php');
     exit;
 }
+require __DIR__ . '/_live.php';
 
 /**
  * Register scanner ("Kasse"): pairs this phone with a TicketFlow register by
